@@ -1,0 +1,5 @@
+# Core dependencies for text-to-3D project
+google-genai
+huggingface-hub
+gradio-client
+python-dotenv
