@@ -1,5 +1,11 @@
-## To run tests:
+## Running Tests
 
-### From the project root, run: `pip install -e .`
-#### This will install the dependencies in pyproject.toml to allow the use of the google_sheets module in the tests
-#### You will see a google_sheets_integration.egg-info directory created, keep this. It will be ignored by git.
+### Setup
+Before running the tests for the first time, you must install the package in "editable" mode. From the project root, run:
+
+```bash
+  pip install -e .
+```
+
+### Result
+You will see a directory called google_sheets_integration.egg-info appear. This is intended and will be ignored by git
