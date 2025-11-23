@@ -42,26 +42,33 @@ class TestSheets(unittest.TestCase):
         """
         print("\n...Attempting to append a row...")
 
-        new_data = []
+        # Tests of order input
+        new_data = {
+            'Description': 'Test append row',
+            'User': 'Jesse',
+        }
 
         # Attempt to append to 'Sheet1' (Ensure a sheet named 'Sheet1' exists)
         response = self.manager.add_entry(new_data, "Sheet1")
+        print(response)
 
         self.assertIsNotNone(response, "API response should not be None")
         self.assertIn('updates', response, "Response should contain update details")
-        print(f"✅ Row appended successfully: {new_data}")
 
-    def test_update_single_cell(self):
+    def test_update_row(self):
         """
         Tests updating a specific cell (e.g., A1).
         """
         print("\n...Attempting to update cell A1...")
+        new_data = {
+            'Description': 'This should be in row 5',
+            'User': 'Jesse',
+        }
 
-        response = self.manager.update_single_cell("A1", "UPDATED BY TEST", "Sheet1")
+        response = self.manager.update_row(new_data, "Sheet1")
 
         self.assertIsNotNone(response, "API response should not be None")
         self.assertIn('updatedCells', response, "Response should indicate cells updated")
-        print("✅ Cell A1 updated successfully")
 
 
 if __name__ == '__main__':
