@@ -30,7 +30,19 @@ class GoogleSheetsClient:
         except Exception as e:
             raise RuntimeError(f"Failed to authenticate: {e}")
 
-    #def get_headers(self, spreadsheet_id):
+    def read_range(self, spreadsheet_id, range_name):
+        """
+        Reads and returns the headers for the given spreadsheet_id.
+        """
+        try:
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=range_name
+            ).execute()
+            return result.get('values', [])
+        except HttpError as e:
+            print(f"API error reading range: {e}")
+            return None
 
     def write_range(self, spreadsheet_id, range_name, values):
         """Writes (overwrites) values to a specific range."""

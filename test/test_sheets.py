@@ -27,6 +27,15 @@ class TestSheets(unittest.TestCase):
         print(self.manager.client.service)
         self.assertIsNotNone(self.manager.client.service, "API Service should be initialized.")
 
+    def test_read_range(self):
+        """
+        Test read_range by attempting to get the headers
+        """
+        header_range = "Sheet1!1:1"
+        header_rows = self.manager.client.read_range(SPREADSHEET_ID, header_range)
+        print(header_rows)
+        self.assertIsNotNone(header_rows)
+
     def test_add_entry(self):
         """
         Tests adding a real row to the spreadsheet.
