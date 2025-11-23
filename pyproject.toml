@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "google_sheets_integration"
+version = "0.1.0"
+description = "Internal tool for Google Sheets integration"
+# This automatically finds packages inside 'src'
+dependencies = [
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
