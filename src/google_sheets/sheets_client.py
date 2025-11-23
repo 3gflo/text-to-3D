@@ -1,6 +1,4 @@
 import os
-import json
-from google.auth.transport.requests import Request
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -39,6 +37,7 @@ class GoogleSheetsClient:
                 spreadsheetId=spreadsheet_id,
                 range=range_name
             ).execute()
+
             return result.get('values', [])
         except HttpError as e:
             print(f"API error reading range: {e}")
@@ -59,13 +58,13 @@ class GoogleSheetsClient:
             print(f"API Error writing range: {err}")
             return None
 
-    def append_to_range(self, spreadsheet_id, range_name, values):
+    def append_to_range(self, spreadsheet_id, sheet_name, values):
         """Appends rows to a sheet."""
         try:
             body = {'values': values}
             result = self.service.spreadsheets().values().append(
                 spreadsheetId=spreadsheet_id,
-                range=range_name,
+                range=sheet_name,
                 valueInputOption="USER_ENTERED",
                 insertDataOption="INSERT_ROWS",
                 body=body
