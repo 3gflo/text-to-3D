@@ -1,4 +1,4 @@
-from sheets_client import GoogleSheetsClient
+from google_sheets.sheets_client import GoogleSheetsClient
 
 class SheetManager:
     """

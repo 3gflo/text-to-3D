@@ -1,8 +1,10 @@
 import unittest
 import os
-from src.google_sheets.sheets_manager import SheetManager
+from google_sheets.sheets_manager import SheetManager
 
-CREDENTIALS_FILE = "../credentials.json"
+test_dir = os.path.dirname(os.path.abspath(__file__))
+root = os.path.dirname(test_dir)
+CREDENTIALS_FILE = os.path.join(root, "credentials.json")
 SPREADSHEET_ID = "1bEiceW4zLOk4I0wxWtPYsiIuP4BsNQIUvp_Pyzh4znk"
 
 class TestSheets(unittest.TestCase):
@@ -13,7 +15,7 @@ class TestSheets(unittest.TestCase):
         """
         # Check if creds exist before trying to authenticate
         if not os.path.exists(CREDENTIALS_FILE):
-            self.fail(f"Credentials file not found at: {os.path.abspath(CREDENTIALS_FILE)}. "
+            self.fail(f"Credentials file not found at: {CREDENTIALS_FILE}. "
                       "Please place your JSON key file there.")
 
         self.manager = SheetManager(CREDENTIALS_FILE, SPREADSHEET_ID)
@@ -22,7 +24,7 @@ class TestSheets(unittest.TestCase):
         """
         Ensure authentication and connection works.
         """
-        self.setUp()
+        print(self.manager.client.service)
         self.assertIsNotNone(self.manager.client.service, "API Service should be initialized.")
 
     def test_add_entry(self):
