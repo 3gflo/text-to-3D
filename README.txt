@@ -20,6 +20,10 @@ ____________________
    - Gemini: https://ai.google.dev/
    - HuggingFace: https://huggingface.co/settings/tokens
 
-7. Run: python main.py
+7. Run command in dir:
+export FAL_KEY="YOUR_API_KEY"
+
+8. Run: python main.py
 
    python main.py
+
