@@ -2,20 +2,19 @@ from gemini_llm import GeminiAdaptor
 from openai_llm import OpenaiAdaptor
 from dotenv import load_dotenv
 import os
+import fal_client
+import requests
+import open3d as o3d  # 
+
 from huggingface_hub import InferenceClient
 from gradio_client import Client, handle_file
-# Load environment variables from .env file
+
 load_dotenv()
 gemini_key = os.getenv("GEMINI_API_KEY")
 huggingface_key = os.getenv("HF_TOKEN")
 client = InferenceClient(api_key=huggingface_key)
-"""
-gemini_key (API KEY)"""
-'''
+trellis_key = os.getenv("FAL_KEY")
 
-
-System Prompt for LLM to use. Play around with it.
-'''
 system_instruction = """
     You are an expert prompt engineer for text-to-image models. Your sole purpose is to convert simple user keywords into a single, highly-detailed, and optimized prompt for generating multi-view images suitable for 3D reconstruction.
 
@@ -46,20 +45,17 @@ You will construct this prompt by rigorously following a 4-layer framework:
     * **Lighting:** "bright, even, neutral studio lighting," "soft, diffused lighting," "minimal shadows." (This is critical for 3D reconstruction).
     * **Background:** "plain neutral gray background," "isolated on a white background."
     * **Quality:** "hyperrealistic CG render," "high-fidelity," "8K," "Unreal Engine 5 render."
-  
+    * **View:** "multi-view orthographic sheet," "front, back, left, right, and top views."
 
 ---
-**Constraint:** Respond ONLY with the generated prompt. Do not include "Here is your prompt:" or any other text. Prompt has to be at a maximum of 2000 characters.
+**Constraint:** Respond ONLY with the generated prompt. Do not include "Here is your prompt:" or any other text.
     """
-  
 
-###LLM Selection
 print("Choose an LLM to generate prompts:")
 print("1. Gemini (gemini-2.5-flash)")
 print("2. OpenAI (gpt-4o-mini via HuggingFace)")
 llm_choice = input("Enter your choice (1 or 2): ").strip()
 
-# Initialize the selected LLM adaptor
 if llm_choice == "1":
     llm = GeminiAdaptor(api_key=gemini_key)
     model = "gemini-2.5-flash"
@@ -74,11 +70,10 @@ else:
     model = "gemini-2.5-flash"
 
 satisfied = False
-###feedback from user if prompt is not sufficient enough
 feedback = ""
 current_instruction = system_instruction
-###feedback loop for getting a valid prompt for input into text-image generation
 request = input("What object would you like to be generated? ")
+
 while not satisfied:
     try:
         if feedback:
@@ -86,7 +81,9 @@ while not satisfied:
         system_instruction += feedback
 
         response = llm.generate_prompt(request, model, current_instruction)
+        print("\n--- GENERATED PROMPT ---")
         print(response)
+        print("------------------------\n")
         satisfied = True if input("Are you satisfied with the prompt? (y/n): ").lower() == "y" else False
     except Exception as e:
         print(f"An error has occured: {e}")
@@ -94,46 +91,82 @@ while not satisfied:
     if(not satisfied):
         feedback = input("What feedback do you want to give to optimize prompt: ")
 
-
-###loop for generating images of different viewpoints of object requested
+fal_urls = []
 viewpoints = ["front","back","top","left","right"]
+
+print("\n--- GENERATING VIEWPOINTS ---")
 for i in viewpoints:
     req = f"{i} viewpoint of "
+    print(f"Generating {i} viewpoint...")
     image = client.text_to_image(
-    prompt=req + response,
-    model="black-forest-labs/FLUX.1-dev"
+        prompt=req + response,
+        model="black-forest-labs/FLUX.1-dev"
     )
-    image.save(f"{i}.png")
-    """
+    filename = f"{i}.png"
+    image.save(filename)
+    url = fal_client.upload_file(filename)
+    fal_urls.append(url)
+
+def on_queue_update(update):
+    if isinstance(update, fal_client.InProgress):
+        for log in update.logs:
+           print(log["message"])
+
+# --- FINAL SUBMISSION BLOCK ---
+try:
+    print("\n--- SUBMITTING TO TRELLIS (SINGLE VIEW OPTIMIZED) ---")
+    result = fal_client.subscribe(
+        "fal-ai/trellis",
+        arguments={
+            "image_url": fal_urls[0] # Uses the Front view
+        },
+        with_logs=True,
+        on_queue_update=on_queue_update,
+    )
     
-trellis_client = Client("trellis-community/TRELLIS")
+    print("\n--- GENERATION COMPLETE ---")
+    print(result)
+    
+    # Check if we got a valid 3D model URL
+    if 'model_mesh' in result:
+        glb_url = result['model_mesh']['url']
+        print(f"\n3D Model URL found: {glb_url}")
+        
+        # --- DOWNLOAD AND VIEW ---
+        local_filename = "output_model.glb"
+        print(f"Downloading to {local_filename}...")
+        
+        # 1. Download the file
+        response = requests.get(glb_url)
+        if response.status_code == 200:
+            with open(local_filename, 'wb') as f:
+                f.write(response.content)
+            print("Download successful!")
+            
+            # 2. Open the Open3D Viewer
+            print("Opening Open3D Viewer... (Close window to exit script)")
+            try:
+                # Read the mesh
+                mesh = o3d.io.read_triangle_mesh(local_filename)
+                
+                # Check if mesh loaded correctly
+                if mesh.is_empty():
+                    print("Warning: Mesh appears empty. Trying to load as 'scene'...")
+                    # Sometimes GLBs are scenes, not single meshes
+                    # But Open3D visualization works best with geometries
+                    # Note: Open3D IO is sometimes picky with GLB. 
+                
+                # Compute normals for better shading (makes it look 3D instead of flat)
+                mesh.compute_vertex_normals()
+                
+                # Draw
+                o3d.visualization.draw_geometries([mesh], window_name="3D Model Viewer")
+                
+            except Exception as e:
+                print(f"Could not open viewer: {e}")
+                print("You can manually open 'output_model.glb' in https://gltf-viewer.donmccurdy.com/")
+        else:
+            print("Failed to download the file.")
 
-print("Preprocessing images...")
-viewpoints_paths = [f"{v}.png" for v in viewpoints]
-preprocessed_images = []
-for img_path in viewpoints_paths:
-    print(f"Preprocessing {img_path}...")
-    preprocessed = trellis_client.predict(
-        image=handle_file(os.path.abspath(img_path)),
-        api_name="/preprocess_image"
-    )
-    preprocessed_images.append(preprocessed)
-
-print("\nGenerating 3D model...")
-result = trellis_client.predict(
-		image=handle_file(preprocessed_images[0]),
-		multiimages=[],
-		seed=0,
-		ss_guidance_strength=7.5,
-		ss_sampling_steps=12,
-		slat_guidance_strength=3,
-		slat_sampling_steps=12,
-		multiimage_algo="stochastic",
-		mesh_simplify=0.95,
-		texture_size=1024,
-		api_name="/generate_and_extract_glb"
-)
-print("3D Generation complete!")
-print(f"Video: {result[0]}")
-print(f"GLB file: {result[2]}")
-"""
+except Exception as e:
+    print(f"Error: {e}")

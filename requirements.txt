@@ -3,3 +3,8 @@ google-genai
 huggingface-hub
 gradio-client
 python-dotenv
+fal-client
+requests 
+trimesh 
+pyglet
+open3d
