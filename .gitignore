@@ -1,2 +1,44 @@
+# Credentials
 credentials.json
+
+# Environment variables and API keys
+.env
+*.env
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated images and outputs
+*.png
+*.jpg
+*.jpeg
+*.glb
+*.mp4
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Distribution / packaging
+dist/
+build/
 *.egg-info/
