@@ -23,28 +23,5 @@ def create_app(config_name=None):
     @app.route('/api/health')
     def health_check():
         return {'status': 'healthy'}   
-    
-    @app.route('/api/generate-image', methods=['POST'])
-    def generate_image():
-        data = request.get_json()
-        prompt = data.get('prompt')
-        service_choice = data.get('service', 'imagen') # Default to imagen if empty
-
-        if not prompt:
-            return {'error': 'No prompt provided'}, 400
-
-        service = image_registry.get_service(service_choice)
-        
-        if not service:
-            return {'error': f'Service {service_choice} not supported'}, 400
-        
-        image_bytes = service.generate(prompt)
-
-        if image_bytes:
-            # Correctly creates virtual file in memory
-            return send_file(BytesIO(image_bytes), mimetype='image/png')
-        
-        return {'error': 'Generation failed'}, 500
-    
 
     return app
