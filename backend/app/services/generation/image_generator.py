@@ -72,7 +72,7 @@ class NanoBananaGenerator(BaseImageGenerator):
             print(f"Nano Banana Error: {e}")
         return None
 
-# DALL-E-3
+# GPT-image-1.5
 class OpenAIGenerator(BaseImageGenerator):
     def __init__(self, api_key):
         self.client = OpenAI(api_key=api_key)
@@ -89,13 +89,12 @@ class OpenAIGenerator(BaseImageGenerator):
             )
             
             # 2. Extract the temporary URL from the response
-            image_url = response.data[0].url
+            image_base64 = response.data[0].b64_json
             
             # 3. Download the image into memory using BytesIO
-            img_response = requests.get(image_url)
-            if img_response.status_code == 200:
-                # Return the raw bytes to be used by Flask app
-                return io.BytesIO(img_response.content).getvalue()
+            image_bytes = base64.b64decode(image_base64)
+            
+            return image_bytes
             
         except Exception as e:
             print(f"OpenAI Error: {e}")
