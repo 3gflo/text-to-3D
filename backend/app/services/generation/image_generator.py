@@ -57,17 +57,21 @@ class NanoBananaGenerator(BaseImageGenerator):
             http_options={'api_version': 'v1beta'}
         )
 
-        self.model_name = 'gemini-2.5-flash-image'
+        self.model_name = 'gemini-3-pro-image-preview'
 
     def generate(self, prompt: str):
         try:
-            response = self.client.models.generate_images(
-                model='imagen-4.0-generate-001',
-                prompt=prompt,
-                config=types.GenerateImagesConfig(number_of_images=1)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=['IMAGE']
+                )
             )
-            if response.generated_images:
-                return response.generated_images[0].image.image_bytes
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    return part.inline_data.data
+                
         except Exception as e:
             print(f"Nano Banana Error: {e}")
         return None

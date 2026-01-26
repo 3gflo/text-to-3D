@@ -6,7 +6,7 @@ URL = "http://127.0.0.1:5055/api/generate-image"
 # The payload matching your ImageServiceRegistry logic
 payload = {
     "prompt": "An oak dining chair with ornate carvings and red cushion",
-    "service": "openai"
+    "service": "nano-banana"
 }
 
 try:
