@@ -8,3 +8,4 @@ requests
 trimesh 
 pyglet
 open3d
+openai
