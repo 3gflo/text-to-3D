@@ -14,9 +14,9 @@ class ImageServiceRegistry:
         openai_key = app_config.get('OPENAI_API_KEY')
 
         self._services = {
-            "imagen": ImagenGenerator(google_key) if google_key else MockImageGenerator(),
-            "nano-banana": NanoBananaGenerator(google_key) if google_key else MockImageGenerator(),
-            "openai": OpenAIGenerator(openai_key) if openai_key else MockImageGenerator(),
+            "imagen": Imagen(google_key) if google_key else MockImageGenerator(),
+            "nano-banana": NanoBanana(google_key) if google_key else MockImageGenerator(),
+            "GPT-image": GPT_image(openai_key) if openai_key else MockImageGenerator(),
         }
     
     def get_service(self, service_name):
@@ -28,7 +28,8 @@ class BaseImageGenerator(ABC):
     def generate(self, prompt: str):
         pass
 
-class ImagenGenerator(BaseImageGenerator):
+# Imagen-4.0
+class Imagen(BaseImageGenerator):
     def __init__(self, api_key):
         self.client = genai.Client(
             api_key=api_key,
@@ -49,8 +50,8 @@ class ImagenGenerator(BaseImageGenerator):
             print(f"Imagen Error: {e}")
         return None
 
-
-class NanoBananaGenerator(BaseImageGenerator):
+# Nano-Banana-pro
+class NanoBanana(BaseImageGenerator):
     def __init__(self, api_key):
         self.client = genai.Client(
             api_key = api_key,
@@ -77,14 +78,13 @@ class NanoBananaGenerator(BaseImageGenerator):
         return None
 
 # GPT-image-1.5
-class OpenAIGenerator(BaseImageGenerator):
+class GPT_image(BaseImageGenerator):
     def __init__(self, api_key):
         self.client = OpenAI(api_key=api_key)
         self.model_name = "gpt-image-1.5"
 
     def generate(self, prompt: str):
         try:
-            # 1. Request generation
             response = self.client.images.generate(
                 model=self.model_name,
                 prompt=prompt,
@@ -92,10 +92,7 @@ class OpenAIGenerator(BaseImageGenerator):
                 # size and quality omitted
             )
             
-            # 2. Extract the temporary URL from the response
             image_base64 = response.data[0].b64_json
-            
-            # 3. Download the image into memory using BytesIO
             image_bytes = base64.b64decode(image_base64)
             
             return image_bytes
@@ -107,7 +104,7 @@ class OpenAIGenerator(BaseImageGenerator):
 # Used for testing in case an API key fails
 class MockImageGenerator(BaseImageGenerator):
     def generate(self, prompt: str):
-        # Create a simple 100x100 solid blue square in memory
+        # Creates a 100x100 solid blue square
         img = Image.new('RGB', (100, 100), color='blue')
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format='PNG')
