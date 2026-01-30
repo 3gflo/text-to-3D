@@ -1,12 +1,12 @@
-from abc import ABC, abstractmethod
+import base64
 import io
-import requests
+from abc import ABC, abstractmethod
+
 from PIL import Image
-from app.config import config
 from google import genai
 from google.genai import types
-import base64
 from openai import OpenAI
+
 
 class ImageServiceRegistry:
     def __init__(self, app_config):
