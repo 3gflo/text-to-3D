@@ -3,7 +3,7 @@ High-level proxy for interacting with a specific spreadsheet.
 Implemented as a singleton to ensure a single point of data persistence.
 """
 
-from app.services.google_sheets_integration.sheets_client import GoogleSheetsClient
+from backend.app.services.google_sheets_integration.sheets_client import GoogleSheetsClient
 
 class SheetManager:
     _instance = None
