@@ -31,6 +31,7 @@ Thumbs.db
 
 # Generated images and outputs
 *.png
+!docs/backendUMLDiagram.png
 *.jpg
 *.jpeg
 *.glb
