@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, jsonify
 from io import BytesIO
 from backend.app.config import config
 from backend.app.services.generation.image_generator import ImageServiceRegistry
@@ -22,7 +22,7 @@ def create_app(config_name=None):
 
     @app.route('/api/health')
     def health_check():
-        return {'status': 'healthy'}   
+        return jsonify({'status': 'healthy'})
 
     @app.route('/api/generate-image', methods=['POST'])
     def generate_image():
