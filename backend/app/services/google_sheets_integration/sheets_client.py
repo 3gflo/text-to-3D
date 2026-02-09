@@ -11,7 +11,10 @@ class GoogleSheetsClient:
     def __init__(self, credentials):
         self.creds = None
         self.service = None
-        self.credentials_source = credentials
+
+        # Looks for credentials.json directly in google_sheets_integration folder
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.credentials_source = os.path.join(current_dir, 'credentials.json')
         self._authenticate()
 
     def _authenticate(self):
