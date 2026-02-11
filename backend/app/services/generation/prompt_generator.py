@@ -48,12 +48,15 @@ class PromptServiceRegistry:
         hf_token = app_config.get('HF_TOKEN')
 
         self._services = {
-            "gemini": GeminiPromptGenerator(google_key) if google_key else MockPromptGenerator(),
-            "huggingface": HuggingFacePromptGenerator(hf_token) if hf_token else MockPromptGenerator(),
+            "gemini-2.5-flash": GeminiPromptGenerator(google_key) if google_key else MockPromptGenerator(),
+            "gpt-oss": GPTOSSPromptGenerator(hf_token) if hf_token else MockPromptGenerator(),
         }
 
     def get_service(self, service_name):
         return self._services.get(service_name.lower(), self._services["gemini"])
+
+    def get_services(self):
+        return self._services
 
 
 class BasePromptGenerator(ABC):
@@ -82,7 +85,7 @@ class GeminiPromptGenerator(BasePromptGenerator):
             return None
 
 
-class HuggingFacePromptGenerator(BasePromptGenerator):
+class GPTOSSPromptGenerator(BasePromptGenerator):
     def __init__(self, api_key):
         self.client = InferenceClient(api_key=api_key)
         self.model_name = 'openai/gpt-oss-20b:groq'

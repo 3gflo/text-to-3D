@@ -1,6 +1,6 @@
 import unittest
 import os
-from google_sheets.sheets_manager import SheetManager
+from backend.app.services.google_sheets_integration.sheets_manager import SheetManager
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(test_dir)

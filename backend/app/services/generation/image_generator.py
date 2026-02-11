@@ -23,6 +23,9 @@ class ImageServiceRegistry:
         # Return requested service or Imagen as default
         return self._services.get(service_name.lower(), self._services["imagen"])
 
+    def get_services(self):
+        return self._services
+
 class BaseImageGenerator(ABC):
     @abstractmethod
     def generate(self, prompt: str):

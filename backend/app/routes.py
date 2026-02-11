@@ -7,16 +7,16 @@ api_bp = Blueprint('api', __name__)
 
 @api_bp.route('/health')
 def health_check():
-    return jsonify({'status': 'healthy'})
+    return jsonify({'status': 'healthy'}, 200)
 
 
 @api_bp.route('/generate-image', methods=['POST'])
 def generate_image():
     data = request.get_json()
-    prompt = data.get('prompt')
+    optimized_prompt = data.get('optimized_prompt')
     service_choice = data.get('service', 'imagen')
 
-    if not prompt:
+    if not optimized_prompt:
         return {'error': 'No prompt provided'}, 400
 
     # Access registries via current_app.extensions
@@ -26,8 +26,17 @@ def generate_image():
     if not service:
         return {'error': f'Service {service_choice} not supported'}, 400
 
-    image_bytes = service.generate(prompt)
+    image_bytes = service.generate(optimized_prompt)
     if image_bytes:
+        sheets_manager = current_app.extensions['sheet_manager']
+        sheets_data = {
+            "Image Generator": service_choice,
+
+            # temp, need to convert bytes to image
+            "Image 1": image_bytes
+        }
+        sheets_manager.update_row(sheets_data, "Sheet 1")
+
         return send_file(BytesIO(image_bytes), mimetype='image/png')
 
     return {'error': 'Generation failed'}, 500
@@ -37,7 +46,7 @@ def generate_image():
 def optimize_prompt():
     data = request.get_json()
     prompt = data.get('prompt')
-    service_choice = data.get('service', 'gemini')
+    service_choice = data.get('service', 'gemini-2.5-flash')
 
     if not prompt:
         return {'error': 'No prompt provided'}, 400
@@ -48,12 +57,23 @@ def optimize_prompt():
     if not service:
         return {'error': f'Service {service_choice} not supported'}, 400
 
-    optimized = service.generate(prompt)
-    if optimized:
+    optimized_prompt = service.generate(prompt)
+    if optimized_prompt:
+        from services.generation.prompt_generator import SYSTEM_INSTRUCTION
+
+        sheets_manager = current_app.extensions['sheet_manager']
+        sheets_data = {
+            "Image Prompt": prompt,
+            "LLM Used": service_choice,
+            "Optimized Image Prompt": optimized_prompt,
+            "System Prompt": SYSTEM_INSTRUCTION,
+        }
+        sheets_manager.update_row(sheets_data, "Sheet 1")
+
         return {
             'success': True,
             'original_prompt': prompt,
-            'optimized_prompt': optimized,
+            'optimized_prompt': optimized_prompt,
             'service': service_choice
         }, 200
 
