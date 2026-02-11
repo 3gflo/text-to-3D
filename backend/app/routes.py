@@ -78,3 +78,23 @@ def optimize_prompt():
         }, 200
 
     return {'error': 'Prompt optimization failed'}, 500
+
+@api_bp.route('/available-models', methods=['GET'])
+def available_models():
+    data = request.get_json()
+    asset_type = data.get('asset_type')
+
+    match asset_type:
+        case "text":
+            registry = current_app.extensions['prompt_registry']
+        case "image":
+            registry = current_app.extensions['image_registry']
+        case "3D":
+            registry = current_app.extensions['3D_registry']
+        case _:
+            return {'error': 'Invalid asset type'}, 400
+
+    services = registry.get_services().keys()
+
+
+    return jsonify({'services': services}, 200)
