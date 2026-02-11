@@ -9,6 +9,7 @@ class Config:
     GOOGLE_SHEET_ID = os.getenv('GOOGLE_SHEET_ID')
     GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    HF_TOKEN = os.getenv('HF_TOKEN')
 
 class DevelopmentConfig(Config):
     DEBUG = False
