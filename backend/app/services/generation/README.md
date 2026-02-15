@@ -6,11 +6,11 @@ An interface for generating 2D images using various AI services, abstracting the
 
 ### Structure
 
-| Component | Description |
+| Component | File | Description |
 | :--- | :--- | :--- |
-| **Registry** | Central controller that manages service initialization based on available API keys. |
-| **Services** | Contains specific class implementations for Imagen, GPT-image, and Nano-Banana. |
-| **Fallback** | Includes a MockImageGenerator that returns a placeholder image if no valid API keys are detected. |
+| **Registry** | `image_generator.py` | Central controller that manages service initialization based on available API keys. |
+| **Services** | `image_generator.py` | Contains specific class implementations for Imagen, GPT-image, and Nano-Banana. |
+| **Fallback** | `image_generator.py` | Includes a MockImageGenerator that returns a placeholder image if no valid API keys are detected. |
 
 ### Functions
 
@@ -37,12 +37,12 @@ A high-level interface for transforming 2D images into 3D assets (.glb meshes) u
 
 ### Structure
 
-| Component | Description |
+| Component | File | Description |
 | :--- | :--- | :--- |
-| **Registry** | Handles the injection of the FAL_KEY into the environment and initializes the 3D generation backend. |
-| **Services** | Implements dedicated classes for the Trellis and Hunyuan3D models. |
-| **Utility** | Provides helper methods for converting image bytes to Data URIs and downloading final model files from remote URLs. |
-| **Fallback** | Includes a MockGenerator that returns a placeholder .glb if no valid API key is detected. |
+| **Registry** | `threeD_generator.py` | Handles the injection of the FAL_KEY into the environment and initializes the 3D generation backend. |
+| **Services** | `image_generator.py` | Implements dedicated classes for the Trellis and Hunyuan3D models. |
+| **Utility** | `image_generator.py` | Provides helper methods for converting image bytes to Data URIs and downloading final model files from remote URLs. |
+| **Fallback** | `image_generator.py` | Includes a MockGenerator that returns a placeholder .glb if no valid API key is detected. |
 
 
 ### Functions
