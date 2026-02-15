@@ -10,6 +10,8 @@ class Config:
     GOOGLE_KEY = os.getenv('GOOGLE_KEY')
     OPENAI_KEY = os.getenv('OPENAI_KEY')
     FALAI_KEY = os.getenv('FALAI_KEY')
+    HF_TOKEN = os.getenv('HF_TOKEN')
+
 
 class DevelopmentConfig(Config):
     DEBUG = False

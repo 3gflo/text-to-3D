@@ -1,10 +1,11 @@
 import os
 import base64
-from flask import Flask, request, send_file
+from app.services.generation.threeD_generator import ThreeDServiceRegistry
+from flask import Flask, request, send_file, jsonify
 from io import BytesIO
 from app.config import config
 from app.services.generation.image_generator import ImageServiceRegistry
-from app.services.generation.threeD_generator import ThreeDServiceRegistry
+from app.services.generation.prompt_generator import PromptServiceRegistry
 
 def create_app(config_name=None):
     if config_name is None:
@@ -15,6 +16,7 @@ def create_app(config_name=None):
 
     image_registry = ImageServiceRegistry(app.config) # Image generation model registry
     threeD_registry = ThreeDServiceRegistry(app.config) # 3D generation model registry
+    prompt_registry = PromptServiceRegistry(app.config) # Prompt optimization model registry
     
     from app.services.google_sheets_integration.sheets_manager import SheetManager
     sheet_manager = SheetManager(
@@ -25,7 +27,7 @@ def create_app(config_name=None):
 
     @app.route('/api/health')
     def health_check():
-        return {'status': 'healthy'}   
+        return jsonify({'status': 'healthy'})
 
     @app.route('/api/generate-image', methods=['POST'])
     def generate_image():
@@ -93,5 +95,31 @@ def create_app(config_name=None):
         except Exception as e:
             print(f"3D Generation Error: {e}")
             return {'error': str(e)}, 500
+
+    @app.route('/api/optimize-prompt', methods=['POST'])
+    def optimize_prompt():
+        data = request.get_json()
+        prompt = data.get('prompt')
+        service_choice = data.get('service', 'gemini') # Default to gemini if empty
+
+        if not prompt:
+            return {'error': 'No prompt provided'}, 400
+
+        service = prompt_registry.get_service(service_choice)
+
+        if not service:
+            return {'error': f'Service {service_choice} not supported'}, 400
+
+        optimized = service.generate(prompt)
+
+        if optimized:
+            return {
+                'success': True,
+                'original_prompt': prompt,
+                'optimized_prompt': optimized,
+                'service': service_choice
+            }, 200
+
+        return {'error': 'Prompt optimization failed'}, 500
 
     return app
