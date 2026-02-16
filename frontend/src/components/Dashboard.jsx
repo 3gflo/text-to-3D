@@ -88,7 +88,7 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* COLUMN 3: OUTPUT - Added "output-column" class for tighter spacing */}
+        {/* COLUMN 3: OUTPUT */}
         <section className="column output-column">
           <div className="column-header">OUTPUT: Final 3D Model</div>
 
@@ -103,10 +103,15 @@ const Dashboard = () => {
               {/* 3D Model Canvas goes here */}
           </div>
 
-          <div className="button-group">
-            <button className="download-btn">Download as OBJ</button>
-            <button className="download-btn">Download as FBX</button>
+          {/* New Download Row */}
+          <div className="download-row">
+            <select className="dropdown-btn download-select">
+              <option value="obj">Download as OBJ</option>
+              <option value="fbx">Download as FBX</option>
+            </select>
+            <button className="action-btn download-trigger">Download</button>
           </div>
+
         </section>
 
       </main>
