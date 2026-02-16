@@ -51,7 +51,6 @@ const Dashboard = () => {
                   <div>CLIP Score: 0.18 (Below Threshold)</div>
                 </div>
               </div>
-              <div className="score-box">Caption/CLIP score</div>
             </div>
 
             {/* Image Card 2 - Rejected */}
@@ -63,7 +62,6 @@ const Dashboard = () => {
                   <div>CLIP Score: 0.15 (Below Threshold)</div>
                 </div>
               </div>
-              <div className="score-box">Caption/CLIP score</div>
             </div>
 
             {/* Image Card 3 - Accepted */}
@@ -75,7 +73,6 @@ const Dashboard = () => {
                   <div>CLIP Score: 0.36 (Passed)</div>
                 </div>
               </div>
-              <div className="score-box">Caption/CLIP score</div>
             </div>
 
             {/* Image Card 4 - Accepted */}
@@ -87,13 +84,12 @@ const Dashboard = () => {
                   <div>CLIP Score: 0.37 (Passed)</div>
                 </div>
               </div>
-              <div className="score-box">Caption/CLIP score</div>
             </div>
           </div>
         </section>
 
-        {/* COLUMN 3: OUTPUT */}
-        <section className="column">
+        {/* COLUMN 3: OUTPUT - Added "output-column" class for tighter spacing */}
+        <section className="column output-column">
           <div className="column-header">OUTPUT: Final 3D Model</div>
 
           <select className="dropdown-btn">
@@ -104,7 +100,7 @@ const Dashboard = () => {
 
           {/* 3D Asset Placeholder */}
           <div className="asset-display">
-            {/* This div represents where the 3D model canvas or image will go */}
+              {/* 3D Model Canvas goes here */}
           </div>
 
           <div className="button-group">
