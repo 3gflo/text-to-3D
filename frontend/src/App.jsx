@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, React } from 'react'
+import Dashboard from './components/Dashboard'
 
 function App() {
   const [status, setStatus] = useState('Loading...')
@@ -18,11 +19,10 @@ function App() {
   }, [])
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>System Status</h1>
-      <p>Current Status: <strong>{status}</strong></p>
-    </div>
-  )
+      <div>
+        <Dashboard />
+      </div>
+  );
 }
 
 export default App
