@@ -10,8 +10,8 @@ from openai import OpenAI
 
 class ImageServiceRegistry:
     def __init__(self, app_config):
-        google_key = app_config.get('GOOGLE_API_KEY')
-        openai_key = app_config.get('OPENAI_API_KEY')
+        google_key = app_config.get('GOOGLE_KEY')
+        openai_key = app_config.get('OPENAI_KEY')
 
         self._services = {
             "imagen": Imagen(google_key) if google_key else MockImageGenerator(),
