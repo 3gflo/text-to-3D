@@ -1,28 +1,22 @@
 import { useState, useEffect, React } from 'react'
 import Dashboard from './components/Dashboard'
+import LandingPage from './components/LandingPage'
 
 function App() {
-  const [status, setStatus] = useState('Loading...')
-
-  useEffect(() => {
-    // The proxy directs this to http://127.0.0.1:5000/api/health
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Backend responded:", data)
-        setStatus(`Backend is ${data.status}`)
-      })
-      .catch((err) => {
-        console.error("Error connecting:", err)
-        setStatus('Error connecting to backend')
-      })
-  }, [])
+  // State to track which page is visible. Options: 'landing' or 'dashboard'
+  const [currentPage, setCurrentPage] = useState('landing');
 
   return (
-      <div>
+    <div>
+      {currentPage === 'landing' && (
+        <LandingPage onStart={() => setCurrentPage('dashboard')} />
+      )}
+
+      {currentPage === 'dashboard' && (
         <Dashboard />
-      </div>
+      )}
+    </div>
   );
 }
 
-export default App
+export default App;

@@ -1,0 +1,126 @@
+/* src/components/LandingPage.css */
+:root {
+  --gulfstream-blue: #003366;
+  --darker-blue: #002244;
+  --text-main: #333;
+  --bg-white: #ffffff;
+  --line-gray: #ccc;
+}
+
+.landing-container {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-white);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+/* Header (Matches Dashboard) */
+.landing-header {
+  background-color: var(--darker-blue);
+  color: white;
+  padding: 1rem 2rem;
+  text-align: left;
+}
+
+.landing-header h1 {
+  font-size: 1.5rem;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Hero Section */
+.hero-section {
+  padding: 4rem 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero-title {
+  font-size: 2.5rem;
+  color: black;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hero-subtitle {
+  font-size: 1.1rem;
+  color: #555;
+  margin-bottom: 2.5rem;
+  line-height: 1.5;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.start-btn {
+  background-color: var(--gulfstream-blue);
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 0; /* Square as requested */
+  transition: opacity 0.2s;
+}
+
+.start-btn:hover {
+  opacity: 0.9;
+}
+
+/* Process Steps Section */
+.steps-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* Align to top so text doesn't mess up circle alignment */
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+  position: relative;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 180px; /* Fixed width to ensure text wraps nicely */
+  position: relative;
+  z-index: 2; /* Sits on top of the line */
+}
+
+/* The Grey Circles */
+.icon-bubble {
+  width: 100px;
+  height: 100px;
+  background-color: #e6e6e6; /* Light grey bubble background */
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1rem;
+  border: 2px solid transparent; /* Optional: keeps size consistent */
+}
+
+.icon-bubble img {
+  width: 50%; /* Scale icon inside bubble */
+  height: auto;
+  object-fit: contain;
+  opacity: 0.8;
+}
+
+.step-label {
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+/* The Connecting Lines */
+.connector-line {
+  flex-grow: 1;
+  height: 2px;
+  background-color: #999; /* The thin grey line */
+  margin-top: 50px; /* Pushes line down to middle of the 100px circles */
+  min-width: 20px;
+}
