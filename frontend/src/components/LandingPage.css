@@ -1,0 +1,151 @@
+/* src/components/LandingPage.css */
+:root {
+  --gulfstream-blue: #003366;
+  --darker-blue: #002244;
+  --text-main: #333;
+  --bg-white: #ffffff;
+  --line-gray: #ccc;
+}
+
+.landing-container {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-white);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+/* Header - Now matches Dashboard exactly */
+.landing-header {
+  background-color: var(--darker-blue);
+  color: white;
+  padding: 1rem 2rem; /* Reduced to match Dashboard */
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.landing-header h1 {
+  font-size: 1.5rem; /* Reduced to match Dashboard */
+  margin: 0;
+  font-weight: 500;
+}
+
+/* Hero Section */
+.hero-section {
+  padding: 1.5rem 2rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.hero-title {
+  font-size: 2.8rem; /* REDUCED 20% (was 3.5rem) */
+  color: black;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hero-subtitle {
+  font-size: 1.25rem;
+  color: #555;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+  max-width: 750px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.start-btn {
+  background-color: var(--gulfstream-blue);
+  color: white;
+  border: none;
+  padding: 16px 40px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  border-radius: 0;
+  transition: opacity 0.2s;
+  font-weight: 600;
+}
+
+.start-btn:hover {
+  opacity: 0.9;
+}
+
+/* Process Steps Section */
+.steps-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  max-width: 1400px;
+  margin: 1rem auto;
+  padding: 0 2rem;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 220px;
+  position: relative;
+  z-index: 2;
+}
+
+/* The Grey Circles */
+.icon-bubble {
+  width: 160px;
+  height: 160px;
+  background-color: #e6e6e6;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  border: 2px solid transparent;
+}
+
+.icon-bubble img {
+  width: 60%;
+  height: auto;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.step-label {
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 1.1rem;
+}
+
+/* The Connecting Lines (Arrows) */
+.connector-line {
+  flex-grow: 1;
+  height: 4px;
+  background-color: #999;
+  position: relative;
+
+  /* Centering Logic */
+  margin-top: 80px;
+
+  min-width: 80px;
+  opacity: 0.8;
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+/* The Arrow Head */
+.connector-line::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  /* CSS Triangle */
+  width: 0;
+  height: 0;
+  border-left: 12px solid #999;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
