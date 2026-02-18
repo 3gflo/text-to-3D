@@ -1,9 +1,9 @@
 import os
 from flask import Flask
-from config import config
-from services.generation.image_generator import ImageServiceRegistry
-from services.generation.prompt_generator import PromptServiceRegistry
-from services.generation.threeD_generator import ThreeDServiceRegistry
+from .config import config
+from app.services.generation.image_generator import ImageServiceRegistry
+from app.services.generation.prompt_generator import PromptServiceRegistry
+from app.services.generation.threeD_generator import ThreeDServiceRegistry
 
 
 def create_app(config_name=None):
@@ -16,13 +16,20 @@ def create_app(config_name=None):
     # Store registries in app.extensions for Blueprint access
     app.extensions['image_registry'] = ImageServiceRegistry(app.config)
     app.extensions['prompt_registry'] = PromptServiceRegistry(app.config)
-    app.extensions['3d_registery'] = ThreeDServiceRegistry(app.config)
+    app.extensions['3d_registry'] = ThreeDServiceRegistry(app.config)
 
-    from services.google_sheets_integration.sheets_manager import SheetManager
-    app.extensions['sheet_manager'] = SheetManager(
-        credentials=app.config['GOOGLE_SHEETS_CREDENTIALS_PATH'],
-        spreadsheet_id=app.config['GOOGLE_SHEET_ID']
-    )
+    from app.services.google_sheets_integration.sheets_manager import SheetManager
+    from app.services.google_sheets_integration.sheets_manager import MockSheetManager
+
+
+    if app.config.get('GOOGLE_SHEETS_CREDENTIALS_PATH'):
+        app.extensions['sheet_manager'] = SheetManager(
+            credentials=app.config['GOOGLE_SHEETS_CREDENTIALS_PATH'],
+            spreadsheet_id=app.config['GOOGLE_SHEET_ID']
+        )
+    else:
+        print("Using MockSheetManager (No credentials found)")
+        app.extensions['sheet_manager'] = MockSheetManager()
 
     # Register the Blueprint
     from .routes import api_bp
