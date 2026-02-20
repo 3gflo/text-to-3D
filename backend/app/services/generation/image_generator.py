@@ -28,7 +28,7 @@ class ImageServiceRegistry:
 
 class BaseImageGenerator(ABC):
     @abstractmethod
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1) -> list[bytes]:
         pass
 
 # Imagen-4.0
@@ -40,18 +40,18 @@ class Imagen(BaseImageGenerator):
         )
         self.model_name = 'imagen-4.0-generate-001'
 
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         try:
             response = self.client.models.generate_images(
                 model='imagen-4.0-generate-001',
                 prompt=prompt,
-                config=types.GenerateImagesConfig(number_of_images=1)
+                config=types.GenerateImagesConfig(number_of_images=num_images)
             )
             if response.generated_images:
-                return response.generated_images[0].image.image_bytes
+                return [img.image.image_bytes for img in response.generated_images]
         except Exception as e:
-            print(f"Imagen Error: {e}")
-        return None
+            print(f"imagen-4.0-generate-001 Error: {e}")
+        return []
 
 # Nano-Banana-pro
 class NanoBanana(BaseImageGenerator):
@@ -63,22 +63,27 @@ class NanoBanana(BaseImageGenerator):
 
         self.model_name = 'gemini-3-pro-image-preview'
 
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    response_modalities=['IMAGE']
+                    response_modalities=['IMAGE'],
+                    candidate_count=num_images
                 )
             )
-            for part in response.candidates[0].content.parts:
-                if part.inline_data:
-                    return part.inline_data.data
+            images = []
+            if response.candidates:
+                for candidate in response.candidates:
+                    for part in candidate.content.parts:
+                        if part.inline_data:
+                            images.append(part.inline_data.data)
+            return images
                 
         except Exception as e:
-            print(f"Nano Banana Error: {e}")
-        return None
+            print(f"Nano Banana Pro Error: {e}")
+        return []
 
 # GPT-image-1.5
 class GPT_image(BaseImageGenerator):
@@ -86,31 +91,33 @@ class GPT_image(BaseImageGenerator):
         self.client = OpenAI(api_key=api_key)
         self.model_name = "gpt-image-1.5"
 
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         try:
             response = self.client.images.generate(
                 model=self.model_name,
                 prompt=prompt,
-                n=1
+                n=num_images
                 # size and quality omitted
             )
+            images = []
+            for item in response.data:
+                if item.b64_json:
+                    images.append(base64.b64decode(item.b64_json))
             
-            image_base64 = response.data[0].b64_json
-            image_bytes = base64.b64decode(image_base64)
-            
-            return image_bytes
+            return images
             
         except Exception as e:
-            print(f"OpenAI Error: {e}")
-        return None
+            print(f"GPT-image-1.5 Error: {e}")
+        return []
 
 # Used for testing in case an API key fails
 class MockImageGenerator(BaseImageGenerator):
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         # Creates a 100x100 solid blue square
         img = Image.new('RGB', (100, 100), color='blue')
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format='PNG')
+        bytes_data = img_byte_arr.getvalue()
         
         print(f"DEBUG: Mock Generator used for prompt: {prompt}")
-        return img_byte_arr.getvalue()
+        return [bytes_data] * num_images

@@ -33,59 +33,69 @@ class Base3DGenerator(ABC):
     def _bytes_to_data_uri(self, image_bytes: bytes, mime_type: str = "image/png") -> str:
         base64_str = base64.b64encode(image_bytes).decode('utf-8')
         return f"data:{mime_type};base64,{base64_str}"
-
+    
+    # Robustly extracts the GLB URL from various fal.ai response formats.
+    def _extract_url(self, result, service_name):
+        # Handle different response structures
+        if 'model_mesh' in result:
+             return result['model_mesh']['url']
+        if 'model_glb' in result: # Trellis 2 often uses this key
+             return result['model_glb']['url']
+        
+        if 'results' in result and isinstance(result['results'], list):
+            for item in result['results']:
+                if item.get('file_name', '').endswith('.glb'):
+                    return item['url']
+        raise ValueError(f"Could not find model URL in {service_name} response. Keys found: {list(result.keys())}")
+    
     # Helper to download the generated 3D model file.
     def _download_file(self, url: str) -> bytes:
         response = requests.get(url)
         response.raise_for_status()
         return response.content
-    
-    # Robustly extracts the GLB URL from various fal.ai response formats.
-    def _extract_url(self, result: dict, service_name: str) -> str:
-        # Try common keys used by Trellis and Hunyuan
-        for key in ['model_mesh', 'model_glb']:
-            if key in result and isinstance(result[key], dict) and 'url' in result[key]:
-                return result[key]['url']
-        
-        # Log the full result for debugging if no key is found
-        print(f"DEBUG: {service_name} API returned: {result}")
-        raise ValueError(f"{service_name} output does not contain a valid model URL.")
 
 class Trellis(Base3DGenerator):
     def __init__(self):
-        self.model_endpoint = "fal-ai/trellis"
+        self.model_endpoint = "fal-ai/trellis/multi"
 
     def generate(self, images: list[bytes]) -> bytes:
         if not images:
             return None
+        
+        image_urls = [self._bytes_to_data_uri(img) for img in images]
         
         try:
             result = fal_client.subscribe(
                 self.model_endpoint,
                 # Update later for multiview support
-                arguments={"image_url": self._bytes_to_data_uri(images[0])}
+                arguments={"image_urls": image_urls}
             )
             
             model_url = self._extract_url(result, "Trellis")
             return self._download_file(model_url)
         except Exception as e:
-            print(f"Trellis3D Error: {e}")
+            print(f"Trellis3D Error: {str(e)[:200]}...")
             return None
 
 class Hunyuan(Base3DGenerator):
     def __init__(self):
-        self.model_endpoint = "fal-ai/hunyuan3d/v2"
+        self.model_endpoint = "fal-ai/hunyuan3d/v2/multi-view"
 
     def generate(self, images: list[bytes]) -> bytes:
-        if not images:
+        if not images or len(images) < 3:
+            print("Hunyuan3D requires at least 3 images (Front, Back, Left)")
             return None
 
-        # Update later for multiview support
-        arguments = {
-            "input_image_url": self._bytes_to_data_uri(images[0])
-        }
-
         try:
+            arguments = {
+                "front_image_url": self._bytes_to_data_uri(images[0]),
+                "back_image_url": self._bytes_to_data_uri(images[1]),
+                "left_image_url": self._bytes_to_data_uri(images[2])
+                
+            }
+            if len(images) == 4:
+                arguments["right_image_url"] = self._bytes_to_data_uri(images[3])
+            
             result = fal_client.subscribe(
                 self.model_endpoint,
                 arguments=arguments
