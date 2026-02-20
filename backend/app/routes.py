@@ -61,16 +61,20 @@ def optimize_prompt():
 
     optimized_prompt = service.generate(prompt)
     if optimized_prompt:
-        from services.generation.prompt_generator import SYSTEM_INSTRUCTION
+        from .services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
-        sheets_manager = current_app.extensions['sheet_manager']
-        sheets_data = {
-            "Image Prompt": prompt,
-            "LLM Used": service_choice,
-            "Optimized Image Prompt": optimized_prompt,
-            "System Prompt": SYSTEM_INSTRUCTION,
-        }
-        sheets_manager.update_row(sheets_data, "Sheet 1")
+        # Try to log to Google Sheets, but don't fail if it errors
+        try:
+            sheets_manager = current_app.extensions['sheet_manager']
+            sheets_data = {
+                "Image Prompt": prompt,
+                "LLM Used": service_choice,
+                "Optimized Image Prompt": optimized_prompt,
+                "System Prompt": SYSTEM_INSTRUCTION,
+            }
+            sheets_manager.update_row(sheets_data, "Sheet 1")
+        except Exception as e:
+            print(f"Warning: Failed to log to Google Sheets: {e}")
 
         return {
             'success': True,
