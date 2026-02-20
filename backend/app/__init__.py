@@ -16,7 +16,7 @@ def create_app(config_name=None):
     # Store registries in app.extensions for Blueprint access
     app.extensions['image_registry'] = ImageServiceRegistry(app.config)
     app.extensions['prompt_registry'] = PromptServiceRegistry(app.config)
-    app.extensions['3d_registery'] = ThreeDServiceRegistry(app.config)
+    app.extensions['3d_registry'] = ThreeDServiceRegistry(app.config)
 
     from services.google_sheets_integration.sheets_manager import SheetManager
     app.extensions['sheet_manager'] = SheetManager(

@@ -81,7 +81,7 @@ def optimize_prompt():
 
     return {'error': 'Prompt optimization failed'}, 500
 
-@api_bp.route('/api/generate-3d-model', methods=['POST'])
+@api_bp.route('/generate-3d-model', methods=['POST'])
 def generate_3d_model():
     data = request.get_json()
 
