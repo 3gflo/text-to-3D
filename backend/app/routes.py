@@ -28,20 +28,31 @@ def generate_image():
     if not service:
         return {'error': f'Service {service_choice} not supported'}, 400
 
-    image_bytes = service.generate(optimized_prompt)
-    if image_bytes:
+    images = service.generate(optimized_prompt, num_images = 3)
+    if images and len(images) > 0:
+        b64_images = []
+        for img_bytes in images:
+             # Encode to base64 string
+            b64_str = base64.b64encode(img_bytes).decode('utf-8')
+            # Add data URI prefix
+            b64_images.append(f"data:image/png;base64,{b64_str}")
+
         sheets_manager = current_app.extensions['sheet_manager']
         sheets_data = {
             "Image Generator": service_choice,
 
             # temp, need to convert bytes to image/link the file
-            "Image 1": image_bytes
+            "Image 1": None
         }
-        sheets_manager.update_row(sheets_data, "Sheet 1")
+        sheets_manager.update_row(sheets_data, "Sheet1")
 
-        return send_file(BytesIO(image_bytes), mimetype='image/png')
+        return jsonify({
+            'status': 'success',
+            'images': b64_images,
+            'count': len(b64_images)
+        }), 200
 
-    return {'error': 'Generation failed'}, 500
+    return {'error': 'Image Generation failed'}, 500
 
 
 @api_bp.route('/optimize-prompt', methods=['POST'])
@@ -70,7 +81,7 @@ def optimize_prompt():
             "Optimized Image Prompt": optimized_prompt,
             "System Prompt": SYSTEM_INSTRUCTION,
         }
-        sheets_manager.update_row(sheets_data, "Sheet 1")
+        sheets_manager.update_row(sheets_data, "Sheet1")
 
         return {
             'success': True,
@@ -104,7 +115,7 @@ def generate_3d_model():
         # Decode base64 strings to bytes
         image_bytes_list = []
         for img_str in images_data:
-            # Strip metadata header (e.g., "data:image/png;base64,") if present
+            # Strip metadata header (e.g., "data:image/png;base64,")
             if ',' in img_str:
                 img_str = img_str.split(',')[1]
             image_bytes_list.append(base64.b64decode(img_str))
@@ -122,7 +133,7 @@ def generate_3d_model():
             # temp, need to convert bytes to 3d model/link the file
             "Model link": model_bytes
         }
-        sheets_manager.update_row(sheets_data, "Sheet 1")
+        sheets_manager.update_row(sheets_data, "Sheet1")
 
         # Return the GLB file
         return send_file(
@@ -133,8 +144,8 @@ def generate_3d_model():
         )
 
     except Exception as e:
-        print(f"3D Generation Error: {e}")
-        return {'error': str(e)}, 500
+        print(f"3D Generation Error Type: {type(e).__name__}")
+        return {'error': 'Internal server error during 3D generation'}, 500
 
 @api_bp.route('/available-models', methods=['GET'])
 def available_models():
@@ -147,7 +158,7 @@ def available_models():
         case "image":
             registry = current_app.extensions['image_registry']
         case "3D":
-            registry = current_app.extensions['3D_registry']
+            registry = current_app.extensions['3d_registry']
         case _:
             return {'error': 'Invalid asset type'}, 400
 

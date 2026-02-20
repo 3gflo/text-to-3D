@@ -1,63 +1,81 @@
 import requests
 import base64
 import os
+import json
 
 BASE_URL = "http://127.0.0.1:5055"
 PROMPT = "A cute isometric low-poly style cottage with a red roof, white walls, on a floating island"
-IMAGE_SERVICE = "imagen"  # Options: imagen, nano-banana, GPT-image
-THREED_SERVICE = "trellis" # Options: trellis, hunyuan
+IMAGE_SERVICE = "imagen"   # Options: imagen, nano-banana, GPT-image
+THREED_SERVICE = "trellis" # Options: trellis, hunyuan (Hunyuan requires >3 images)
 
 def run_pipeline():
     print(f"--- Starting Pipeline ---")
     
-    # ---------------------------------------------------------
-    # STEP 1: Generate the 2D Image
-    # ---------------------------------------------------------
-    print(f"1. Generating image with prompt: '{PROMPT}'...")
-    
-    img_response = requests.post(
-        f"{BASE_URL}/api/generate-image",
-        json={"prompt": PROMPT, "service": IMAGE_SERVICE}
-    )
-
-    if img_response.status_code != 200:
-        print(f"Error generating image: {img_response.text}")
-        return
-
-    # The image service returns raw binary data (image/png)
-    image_bytes = img_response.content
-    
-    # Save the intermediate image for verification
-    with open("intermediate_image.png", "wb") as f:
-        f.write(image_bytes)
-    print("   -> Image generated and saved as 'intermediate_image.png'")
-
-    # ---------------------------------------------------------
-    # STEP 2: Generate the 3D Model
-    # ---------------------------------------------------------
-    print(f"2. Generating 3D model using {THREED_SERVICE}...")
-
-    # The 3D service expects a JSON list of Base64 strings
-    # Encode the binary image data received
-    base64_image = base64.b64encode(image_bytes).decode('utf-8')
+    # Generate images
+    print(f"1. Generating images with prompt: '{PROMPT}'...")
     
     payload = {
-        "images": [base64_image], 
+        "optimized_prompt": PROMPT, 
+        "service": IMAGE_SERVICE,
+        "num_images": 3 
+    }
+    
+    try:
+        img_response = requests.post(
+            f"{BASE_URL}/api/generate-image",
+            json=payload
+        )
+        img_response.raise_for_status() # Raise error for 400/500 codes
+    except requests.exceptions.RequestException as e:
+        print(f"Error generating image: {e}")
+        if img_response: print(img_response.text)
+        return
+
+    # Handle JSON response containing list of images
+    response_data = img_response.json()
+    
+    # Extract the list of data URI strings ("data:image/png;base64,...")
+    images_data = response_data.get('images', [])
+    
+    if not images_data:
+        print("No images returned from service.")
+        return
+        
+    print(f"   -> Received {len(images_data)} images.")
+
+    # Save intermediate images for verification
+    for idx, img_str in enumerate(images_data):
+        # Strip the header "data:image/png;base64," to save as file
+        if ',' in img_str:
+            base64_data = img_str.split(',')[1]
+        else:
+            base64_data = img_str
+            
+        with open(f"intermediate_image_{idx}.png", "wb") as f:
+            f.write(base64.b64decode(base64_data))
+    
+    print("   -> Intermediate images saved locally.")
+
+    # Generate 3D Model
+    print(f"2. Generating 3D model using {THREED_SERVICE}...")
+
+    payload_3d = {
+        "images": images_data, 
         "service": THREED_SERVICE
     }
 
-    three_d_response = requests.post(
-        f"{BASE_URL}/api/generate-3d-model",
-        json=payload
-    )
-
-    if three_d_response.status_code != 200:
-        print(f"Error generating 3D model: {three_d_response.text}")
+    try:
+        three_d_response = requests.post(
+            f"{BASE_URL}/api/generate-3d-model",
+            json=payload_3d
+        )
+        three_d_response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Error generating 3D model: {e}")
+        if three_d_response: print(three_d_response.text)
         return
 
-    # ---------------------------------------------------------
-    # STEP 3: Save the Result
-    # ---------------------------------------------------------
+    # Save result
     output_filename = f"final_model_{THREED_SERVICE}.glb"
     with open(output_filename, "wb") as f:
         f.write(three_d_response.content)
