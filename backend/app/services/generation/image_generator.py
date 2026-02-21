@@ -41,6 +41,7 @@ class Imagen(BaseImageGenerator):
         self.model_name = 'imagen-4.0-generate-001'
 
     def generate(self, prompt: str, num_images: int = 1):
+        print("Trying Imagen...")
         try:
             response = self.client.models.generate_images(
                 model='imagen-4.0-generate-001',
@@ -64,6 +65,7 @@ class NanoBanana(BaseImageGenerator):
         self.model_name = 'gemini-3-pro-image-preview'
 
     def generate(self, prompt: str, num_images: int = 1):
+        print("Trying NanoBanana...")
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -92,6 +94,7 @@ class GPT_image(BaseImageGenerator):
         self.model_name = "gpt-image-1.5"
 
     def generate(self, prompt: str, num_images: int = 1):
+        print("Trying GPT-image...")
         try:
             response = self.client.images.generate(
                 model=self.model_name,

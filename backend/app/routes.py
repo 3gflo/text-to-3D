@@ -72,7 +72,7 @@ def optimize_prompt():
 
     optimized_prompt = service.generate(prompt)
     if optimized_prompt:
-        from services.generation.prompt_generator import SYSTEM_INSTRUCTION
+        from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
         # Try to log to Google Sheets, but don't fail if it errors
         try:
