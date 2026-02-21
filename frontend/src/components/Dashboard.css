@@ -233,3 +233,30 @@ textarea:disabled {
   align-items: center;
   margin-top: 0.5rem;
 }
+
+/* Update your badge colors to match the new statuses */
+.badge.low {
+  background-color: #f44336; /* Red */
+  color: white;
+}
+
+.badge.medium {
+  background-color: #ff9800; /* Orange */
+  color: white;
+}
+
+.badge.high {
+  background-color: #4caf50; /* Green */
+  color: white;
+}
+
+/* Note: The backslash is required to escape the forward slash in "N/A" */
+.badge.n\/a {
+  background-color: #9e9e9e; /* Grey */
+  color: white;
+}
+
+.badge.evaluating {
+  background-color: #2196f3; /* Blue */
+  color: white;
+}

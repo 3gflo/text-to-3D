@@ -30,6 +30,14 @@ const Dashboard = () => {
   const [isGenerating3D, setIsGenerating3D] = useState(false);
   const [modelUrl, setModelUrl] = useState(null);
 
+  // Helper to categorize the numerical CLIP score
+  const getClipLabel = (score) => {
+    if (score === 0.0 || score === null || score === "N/A") return "N/A";
+    if (score < 0.2) return "Low"; // arbitrary for temp use
+    if (score < 0.6) return "Medium"; // arbitrary for temp use
+    return "High";
+  };
+
   // Fetch available models on mount for all asset types
   useEffect(() => {
     const fetchAvailableModels = async () => {
@@ -143,10 +151,43 @@ const Dashboard = () => {
           id: index + 1,
           url: imgStr, // The python backend already appends "data:image/png;base64,"
           score: "N/A", // Placeholder until backend CLIP evaluation is implemented
-          status: "ACCEPTED" // Placeholder
+          status: "EVALUATING" // Placeholder
         }));
 
         setGeneratedImages(fetchedResults);
+
+        // Evaluate the Images (CLIP Score)
+        try {
+          const evalResponse = await fetch('/api/evaluate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              images: data.images,
+              prompt: promptToUse
+            })
+          });
+
+          if (evalResponse.ok) {
+            const evalData = await evalResponse.json();
+            if (evalData.status === 'success') {
+              // Update state with the new scores and categorical statuses
+              const scoredResults = fetchedResults.map((img, idx) => {
+                const score = evalData.evaluations[idx].score;
+                return {
+                  ...img,
+                  score: score,
+                  status: getClipLabel(score).toUpperCase() // Sets status to LOW, MEDIUM, or HIGH
+                };
+              });
+              setGeneratedImages(scoredResults);
+            }
+          }
+        } catch (evalError) {
+           console.error("Evaluation failed:", evalError);
+           // Fallback to N/A instead of ACCEPTED if the server errors
+           const fallbackResults = fetchedResults.map(img => ({...img, status: "N/A"}));
+           setGeneratedImages(fallbackResults);
+        }
       } else {
         throw new Error("Unexpected response structure from server.");
       }
@@ -321,7 +362,12 @@ const Dashboard = () => {
                   </div>
                   <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
                   <div className="overlay-text">
-                    <div>CLIP Score: {img.score}</div>
+                    <div>Generated Image</div>
+                    <div>
+                      CLIP Score: {img.score !== "N/A"
+                        ? `${getClipLabel(img.score)} (${img.score})`
+                        : "N/A"}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import base64
+import time
 
 from flask import Blueprint, request, send_file, jsonify, current_app
 from io import BytesIO
@@ -170,3 +171,26 @@ def available_models():
 
 
     return jsonify({'services': services}), 200
+
+
+@api_bp.route('/evaluate-image', methods=['POST'])
+def evaluate_image():
+    data = request.get_json()
+    images_data = data.get('images', [])
+    prompt = data.get('prompt', '')
+
+    if not images_data or not prompt:
+        return {'error': 'Images and prompt are required'}, 400
+
+    # Placeholder for the actual CLIP score module.
+    evaluations = []
+    for img_str in images_data:
+        # Mocking a score for now
+        time.sleep(3) # temp sleep to show evaluating state
+        mock_score = 0.0
+        evaluations.append({'score': mock_score})
+
+    return jsonify({
+        'status': 'success',
+        'evaluations': evaluations
+    }), 200
