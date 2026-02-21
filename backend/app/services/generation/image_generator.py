@@ -16,7 +16,7 @@ class ImageServiceRegistry:
         self._services = {
             "imagen": Imagen(google_key) if google_key else MockImageGenerator(),
             "nano-banana": NanoBanana(google_key) if google_key else MockImageGenerator(),
-            "GPT-image": GPT_image(openai_key) if openai_key else MockImageGenerator(),
+            "gpt-image": GPT_image(openai_key) if openai_key else MockImageGenerator(),
         }
     
     def get_service(self, service_name):

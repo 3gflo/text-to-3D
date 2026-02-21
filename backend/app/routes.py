@@ -16,7 +16,7 @@ def health_check():
 def generate_image():
     data = request.get_json()
     optimized_prompt = data.get('optimized_prompt')
-    service_choice = data.get('service', 'imagen')
+    service_choice = data.get('service')
 
     if not optimized_prompt:
         return {'error': 'No prompt provided'}, 400
@@ -135,7 +135,7 @@ def generate_3d_model():
             "3D Model Generator": service_choice,
 
             # temp, need to convert bytes to 3d model/link the file
-            "Model link": model_bytes
+            "Model link": "Pending implementation"
         }
         sheets_manager.update_row(sheets_data, "Sheet1")
 

@@ -62,6 +62,7 @@ class Trellis(Base3DGenerator):
         self.model_endpoint = "fal-ai/trellis/multi"
 
     def generate(self, images: list[bytes]) -> bytes:
+        print("Trying Trellis...")
         if not images:
             return None
         
@@ -85,6 +86,8 @@ class Hunyuan(Base3DGenerator):
         self.model_endpoint = "fal-ai/hunyuan3d/v2/multi-view"
 
     def generate(self, images: list[bytes]) -> bytes:
+        print("Trying Hunyuan...")
+
         if not images or len(images) < 3:
             print("Hunyuan3D requires at least 3 images (Front, Back, Left)")
             return None

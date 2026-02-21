@@ -1,6 +1,7 @@
 // src/components/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
+import '@google/model-viewer' // npm install @google/model-viewer
 
 const Dashboard = () => {
   // State management for prompt optimization
@@ -101,7 +102,7 @@ const Dashboard = () => {
     }
   };
 
-  // Handler for Image Generation & Mock CLIP Scoring
+  // Handler for Image Generation fetching from Backend
   const handleGenerateImages = async () => {
     if (!selectedImageModel || selectedImageModel === "Choose Image Model") {
       alert("Please select an image model from the dropdown first.");
@@ -117,19 +118,44 @@ const Dashboard = () => {
 
     setIsGenerating(true);
     setGeneratedImages([]);
+    setSelectedImageBase64(null); // Clear previous selection
 
-    // Simulate backend processing time for UI testing
-    setTimeout(() => {
-      const mockResults = [
-        { id: 1, url: "https://placehold.co/400x400/eeeeee/333333?text=Front+View", score: 0.36, status: "ACCEPTED" },
-        { id: 2, url: "https://placehold.co/400x400/eeeeee/333333?text=Left+View", score: 0.28, status: "ACCEPTED" },
-        { id: 3, url: "https://placehold.co/400x400/eeeeee/333333?text=Top+View", score: 0.15, status: "REJECTED" },
-        { id: 4, url: "https://placehold.co/400x400/eeeeee/333333?text=Right+View", score: 0.18, status: "REJECTED" }
-      ];
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          optimized_prompt: promptToUse,
+          service: selectedImageModel
+        }),
+      });
 
-      setGeneratedImages(mockResults);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to generate images');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'success' && data.images) {
+        // Map the backend base64 strings to the UI array format
+        const fetchedResults = data.images.map((imgStr, index) => ({
+          id: index + 1,
+          url: imgStr, // The python backend already appends "data:image/png;base64,"
+          score: "N/A", // Placeholder until backend CLIP evaluation is implemented
+          status: "ACCEPTED" // Placeholder
+        }));
+
+        setGeneratedImages(fetchedResults);
+      } else {
+        throw new Error("Unexpected response structure from server.");
+      }
+    } catch (error) {
+      console.error("Error generating images:", error);
+      alert(error.message || "Failed to generate images. Check console.");
+    } finally {
       setIsGenerating(false);
-    }, 2000);
+    }
   };
 
   const handleGenerate3DAsset = async () => {
@@ -264,9 +290,9 @@ const Dashboard = () => {
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
 
-          <div style={{fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', textAlign: 'center'}}>
-            *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher to pass to 3D generation.
-          </div>
+{/*           <div style={{fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', textAlign: 'center'}}> */}
+{/*             *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher to pass to 3D generation. */}
+{/*           </div> */}
 
           <div className="image-grid">
             {generatedImages.length === 0 && !isGenerating && (
@@ -274,19 +300,27 @@ const Dashboard = () => {
             )}
 
             {isGenerating && (
-              <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... (Mocking)</p>
+              <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... Please wait.</p>
             )}
 
             {/* Dynamically Populated Image Cards */}
             {generatedImages.map((img) => (
-              <div key={img.id} className="image-card">
+              <div
+                key={img.id}
+                className="image-card"
+                onClick={() => setSelectedImageBase64(img.url)}
+                style={{
+                  cursor: 'pointer',
+                  border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
+                  boxSizing: 'border-box'
+                }}
+              >
                 <div className="image-slot">
                   <div className={`badge ${img.status.toLowerCase()}`}>
                     {img.status}
                   </div>
                   <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
                   <div className="overlay-text">
-                    <div>Generated Image</div>
                     <div>CLIP Score: {img.score}</div>
                   </div>
                 </div>
@@ -336,6 +370,9 @@ const Dashboard = () => {
                   src={modelUrl}
                   auto-rotate
                   camera-controls
+                  environment-image="neutral" // Adds a default HDRI lighting environment
+                  exposure="1"                // Adjusts the brightness
+                  shadow-intensity="1"        // Grounds the model with a shadow
                   style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
                 ></model-viewer>
               )}
