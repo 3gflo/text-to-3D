@@ -3,60 +3,70 @@ import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
 
 const Dashboard = () => {
-    // State management for prompt optimization (From Main)
+  // State management for prompt optimization
   const [inputPrompt, setInputPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
   const [optimizedPrompt, setOptimizedPrompt] = useState("");
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [error, setError] = useState("");
-  const [selectedPromptService, setSelectedPromptService] = useState("gpt-oss");
 
-  // State management for image generation & selection (Ticket 12)
+  // Dynamic Model States
+  const [textModels, setTextModels] = useState([]);
+  const [selectedPromptService, setSelectedPromptService] = useState("");
+
   const [imageModels, setImageModels] = useState([]);
   const [selectedImageModel, setSelectedImageModel] = useState("");
+
+  const [threeDModels, setThreeDModels] = useState([]);
+  const [selected3DModel, setSelected3DModel] = useState("");
+
+  // State management for image generation & selection
   const [generatedImages, setGeneratedImages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedImageBase64, setSelectedImageBase64] = useState(null);
   const CLIP_THRESHOLD = 0.25;
 
-  // Available prompt optimization services (From Main)
-  const promptServices = [
-    { value: "gpt-oss", label: "GPT-OSS " },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 " },
-  ];
-
-  // Image generation state
-  const [selectedImageBase64, setSelectedImageBase64] = useState(null);
-
   // 3D generation state
-  const [selected3DModel, setSelected3DModel] = useState('trellis');
   const [isGenerating3D, setIsGenerating3D] = useState(false);
   const [modelUrl, setModelUrl] = useState(null);
 
-  // Fetch available image models on mount (Ticket 12)
+  // Fetch available models on mount for all asset types
   useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        const response = await fetch('/api/available-models', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ asset_type: 'image' })
-        });
+    const fetchAvailableModels = async () => {
+      const assetTypes = ['text', 'image', '3D'];
 
-        if (response.ok) {
-          const data = await response.json();
-          setImageModels(data.services || []);
-        } else {
-          throw new Error("Backend not ready");
+      const stateSetters = {
+        text: { setList: setTextModels, setSelected: setSelectedPromptService },
+        image: { setList: setImageModels, setSelected: setSelectedImageModel },
+        '3D': { setList: setThreeDModels, setSelected: setSelected3DModel }
+      };
+
+      for (const type of assetTypes) {
+        try {
+          const response = await fetch('/api/available-models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asset_type: type })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log(data)
+            const fetchedModels = data.services || [];
+
+            stateSetters[type].setList(fetchedModels);
+          } else {
+            throw new Error(`Backend not ready for ${type}`);
+          }
+        } catch (error) {
+          console.warn(`Backend unavailable for ${type} with error ${error}`);
         }
-      } catch (error) {
-        console.warn("Backend unavailable, using mock image models for UI testing.");
-        setImageModels(["imagen", "nano-banana", "GPT-image"]);
       }
     };
 
-    fetchModels();
+    fetchAvailableModels();
   }, []);
 
-  // Handler for optimizing prompt via backend API (From Main)
+  // Handler for optimizing prompt via backend API
   const handleOptimizePrompt = async () => {
     if (!inputPrompt.trim()) {
       setError("Please enter a prompt to optimize");
@@ -91,14 +101,13 @@ const Dashboard = () => {
     }
   };
 
-  // Handler for Image Generation & Mock CLIP Scoring (Ticket 12)
+  // Handler for Image Generation & Mock CLIP Scoring
   const handleGenerateImages = async () => {
     if (!selectedImageModel || selectedImageModel === "Choose Image Model") {
       alert("Please select an image model from the dropdown first.");
       return;
     }
 
-    // Use optimized prompt if available, otherwise fallback to input prompt
     const promptToUse = optimizedPrompt || inputPrompt;
 
     if (!promptToUse.trim()) {
@@ -112,37 +121,16 @@ const Dashboard = () => {
     // Simulate backend processing time for UI testing
     setTimeout(() => {
       const mockResults = [
-        {
-          id: 1,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Front+View",
-          score: 0.36,
-          status: "ACCEPTED"
-        },
-        {
-          id: 2,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Left+View",
-          score: 0.28,
-          status: "ACCEPTED"
-        },
-        {
-          id: 3,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Top+View",
-          score: 0.15,
-          status: "REJECTED"
-        },
-        {
-          id: 4,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Right+View",
-          score: 0.18,
-          status: "REJECTED"
-        }
+        { id: 1, url: "https://placehold.co/400x400/eeeeee/333333?text=Front+View", score: 0.36, status: "ACCEPTED" },
+        { id: 2, url: "https://placehold.co/400x400/eeeeee/333333?text=Left+View", score: 0.28, status: "ACCEPTED" },
+        { id: 3, url: "https://placehold.co/400x400/eeeeee/333333?text=Top+View", score: 0.15, status: "REJECTED" },
+        { id: 4, url: "https://placehold.co/400x400/eeeeee/333333?text=Right+View", score: 0.18, status: "REJECTED" }
       ];
 
       setGeneratedImages(mockResults);
       setIsGenerating(false);
     }, 2000);
   };
-
 
   const handleGenerate3DAsset = async () => {
     if (!selectedImageBase64) {
@@ -154,7 +142,6 @@ const Dashboard = () => {
     setModelUrl(null); // Clear the viewer before starting
 
     try {
-
       const response = await fetch('/api/generate-3d-model', {
         method: 'POST',
         headers: {
@@ -186,6 +173,7 @@ const Dashboard = () => {
       setIsGenerating3D(false);
     }
   };
+
   return (
     <div className="dashboard-container">
       {/* Header */}
@@ -216,9 +204,10 @@ const Dashboard = () => {
             onChange={(e) => setSelectedPromptService(e.target.value)}
             disabled={isOptimizing || isGenerating}
           >
-            {promptServices.map((service) => (
-              <option key={service.value} value={service.value}>
-                {service.label}
+            <option value="">Choose Text Model</option>
+            {textModels.map((modelName) => (
+              <option key={modelName} value={modelName}>
+                {modelName}
               </option>
             ))}
           </select>
@@ -246,7 +235,7 @@ const Dashboard = () => {
             disabled={isGenerating}
           />
 
-          {/* Dynamic Image Model Dropdown (Ticket 12) */}
+          {/* Dynamic Image Model Dropdown */}
           <select
             className="dropdown-btn"
             value={selectedImageModel}
@@ -261,7 +250,7 @@ const Dashboard = () => {
             ))}
           </select>
 
-          {/* Generate Batch Images Button (Ticket 12) */}
+          {/* Generate Batch Images Button */}
           <button
             className="action-btn"
             onClick={handleGenerateImages}
@@ -271,7 +260,7 @@ const Dashboard = () => {
           </button>
         </section>
 
-        {/* COLUMN 2: PROCESSING (Ticket 12) */}
+        {/* COLUMN 2: PROCESSING */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
 
@@ -310,14 +299,18 @@ const Dashboard = () => {
         <section className="column output-column">
           <div className="column-header">OUTPUT: Final 3D Model</div>
 
-          {/* Bind select to state */}
+          {/* Dynamic 3D Model Dropdown */}
           <select
             className="dropdown-btn"
             value={selected3DModel}
             onChange={(e) => setSelected3DModel(e.target.value)}
           >
-            <option value="trellis">Trellis</option>
-            <option value="hunyuan">Hunyuan</option>
+            <option value="">Choose 3D Generator</option>
+            {threeDModels.map((modelName) => (
+              <option key={modelName} value={modelName}>
+                {modelName}
+              </option>
+            ))}
           </select>
 
           {/* Bind button to fetch function */}

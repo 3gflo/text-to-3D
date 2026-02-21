@@ -151,7 +151,7 @@ def generate_3d_model():
         print(f"3D Generation Error Type: {type(e).__name__}")
         return {'error': 'Internal server error during 3D generation'}, 500
 
-@api_bp.route('/available-models', methods=['GET'])
+@api_bp.route('/available-models', methods=['POST'])
 def available_models():
     data = request.get_json()
     asset_type = data.get('asset_type')
@@ -166,7 +166,7 @@ def available_models():
         case _:
             return {'error': 'Invalid asset type'}, 400
 
-    services = registry.get_services().keys()
+    services = list(registry.get_services().keys())
 
 
-    return jsonify({'services': services}, 200)
+    return jsonify({'services': services}), 200

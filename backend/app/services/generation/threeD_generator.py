@@ -20,6 +20,9 @@ class ThreeDServiceRegistry:
         # Return requested service or Trellis as default
         return self._services.get(service_name.lower(), self._services["trellis"])
 
+    def get_services(self):
+        return self._services
+
 class Base3DGenerator(ABC):
     @abstractmethod
     def generate(self, images: list[bytes]) -> bytes:
