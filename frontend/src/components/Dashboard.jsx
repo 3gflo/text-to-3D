@@ -1,8 +1,60 @@
 // src/components/Dashboard.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import './Dashboard.css';
 
 const Dashboard = () => {
+  // State management for prompt optimization
+  const [inputPrompt, setInputPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
+  const [optimizedPrompt, setOptimizedPrompt] = useState("");
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedPromptService, setSelectedPromptService] = useState("gpt-oss");
+
+  // Available prompt optimization services
+  const promptServices = [
+    { value: "gpt-oss", label: "GPT-OSS " },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 " },
+  ];
+
+  // Handler for optimizing prompt via backend API
+  const handleOptimizePrompt = async () => {
+    // Client-side validation
+    if (!inputPrompt.trim()) {
+      setError("Please enter a prompt to optimize");
+      return;
+    }
+
+    // Clear previous error
+    setError("");
+    setIsOptimizing(true);
+
+    try {
+      const response = await fetch('/api/optimize-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: inputPrompt.trim(),
+          service: selectedPromptService
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to optimize prompt');
+      }
+
+      const data = await response.json();
+      setOptimizedPrompt(data.optimized_prompt);
+    } catch (err) {
+      console.error('Error optimizing prompt:', err);
+      setError(err.message || 'Failed to optimize prompt. Please try again.');
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
   return (
     <div className="dashboard-container">
       {/* Header */}
@@ -20,14 +72,42 @@ const Dashboard = () => {
 
           <textarea
             placeholder="A futuristic, sleek white chair with blue LED light accents"
-            defaultValue="A futuristic, sleek white chair with blue LED light accents"
+            value={inputPrompt}
+            onChange={(e) => setInputPrompt(e.target.value)}
+            disabled={isOptimizing}
           />
 
-          <button className="action-btn">Optimize Prompt</button>
+          <select
+            className="dropdown-btn"
+            value={selectedPromptService}
+            onChange={(e) => setSelectedPromptService(e.target.value)}
+            disabled={isOptimizing}
+          >
+            {promptServices.map((service) => (
+              <option key={service.value} value={service.value}>
+                {service.label}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className="action-btn"
+            onClick={handleOptimizePrompt}
+            disabled={isOptimizing || !inputPrompt.trim()}
+          >
+            {isOptimizing ? 'Optimizing...' : 'Optimize Prompt'}
+          </button>
+
+          {error && (
+            <div style={{ color: 'red', fontSize: '14px', margin: '8px 0' }}>
+              {error}
+            </div>
+          )}
 
           <textarea
-            placeholder="Example optimized prompt"
-            readOnly
+            placeholder="Optimized prompt will appear here (editable)"
+            value={optimizedPrompt}
+            onChange={(e) => setOptimizedPrompt(e.target.value)}
           />
 
           <select className="dropdown-btn">
