@@ -1,9 +1,9 @@
 import os
 from flask import Flask
 from .config import config
-from app.services.generation.image_generator import ImageServiceRegistry
-from app.services.generation.prompt_generator import PromptServiceRegistry
-from app.services.generation.threeD_generator import ThreeDServiceRegistry
+from .services.generation.image_generator import ImageServiceRegistry
+from .services.generation.prompt_generator import PromptServiceRegistry
+from .services.generation.threeD_generator import ThreeDServiceRegistry
 
 
 def create_app(config_name=None):
@@ -18,8 +18,8 @@ def create_app(config_name=None):
     app.extensions['prompt_registry'] = PromptServiceRegistry(app.config)
     app.extensions['3d_registry'] = ThreeDServiceRegistry(app.config)
 
-    from app.services.google_sheets_integration.sheets_manager import SheetManager
-    from app.services.google_sheets_integration.sheets_manager import MockSheetManager
+    from .services.google_sheets_integration.sheets_manager import SheetManager
+    from .services.google_sheets_integration.sheets_manager import MockSheetManager
 
 
     if app.config.get('GOOGLE_SHEETS_CREDENTIALS_PATH'):

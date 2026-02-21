@@ -4,7 +4,14 @@ from backend.app.services.google_sheets_integration.sheets_manager import SheetM
 
 test_dir = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(test_dir)
-CREDENTIALS_FILE = os.path.join(root, "credentials.json")
+
+CREDENTIALS_FILE = os.path.join(
+    root,
+    "app",
+    "services",
+    "google_sheets_integration",
+    "credentials.json"
+)
 SPREADSHEET_ID = "1bEiceW4zLOk4I0wxWtPYsiIuP4BsNQIUvp_Pyzh4znk"
 
 class TestSheets(unittest.TestCase):
