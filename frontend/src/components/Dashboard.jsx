@@ -1,20 +1,30 @@
+// src/components/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  // State for Inputs
-  const [prompt, setPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
+  // State management for prompt optimization (From Main)
+  const [inputPrompt, setInputPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
+  const [optimizedPrompt, setOptimizedPrompt] = useState("");
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedPromptService, setSelectedPromptService] = useState("gpt-oss");
+
+  // State management for image generation & selection (Ticket 12)
   const [imageModels, setImageModels] = useState([]);
   const [selectedImageModel, setSelectedImageModel] = useState("");
-  
-  // State for Outputs
   const [generatedImages, setGeneratedImages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  const CLIP_THRESHOLD = 0.25;
 
-  // Configuration
-  const CLIP_THRESHOLD = 0.24;
+  // Available prompt optimization services (From Main)
+  const promptServices = [
+    { value: "gpt-oss", label: "GPT-OSS " },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 " },
+  ];
 
-  // Fetch available models on component mount
+  // Fetch available image models on mount (Ticket 12)
   useEffect(() => {
     const fetchModels = async () => {
       try {
@@ -31,27 +41,69 @@ const Dashboard = () => {
           throw new Error("Backend not ready");
         }
       } catch (error) {
-        console.warn("Backend unavailable, using mock models for UI testing.");
-        setImageModels(["imagen", "nano-banana", "GPT-image"]); // Mock models
+        console.warn("Backend unavailable, using mock image models for UI testing.");
+        setImageModels(["imagen", "nano-banana", "GPT-image"]); 
       }
     };
 
     fetchModels();
   }, []);
 
-  // Handle Image Generation (MOCKED FOR UI TESTING)
+  // Handler for optimizing prompt via backend API (From Main)
+  const handleOptimizePrompt = async () => {
+    if (!inputPrompt.trim()) {
+      setError("Please enter a prompt to optimize");
+      return;
+    }
+
+    setError("");
+    setIsOptimizing(true);
+
+    try {
+      const response = await fetch('/api/optimize-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: inputPrompt.trim(),
+          service: selectedPromptService
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to optimize prompt');
+      }
+
+      const data = await response.json();
+      setOptimizedPrompt(data.optimized_prompt);
+    } catch (err) {
+      console.error('Error optimizing prompt:', err);
+      setError(err.message || 'Failed to optimize prompt. Please try again.');
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  // Handler for Image Generation & Mock CLIP Scoring (Ticket 12)
   const handleGenerateImages = async () => {
     if (!selectedImageModel || selectedImageModel === "Choose Image Model") {
       alert("Please select an image model from the dropdown first.");
       return;
     }
 
-    setIsGenerating(true);
-    setGeneratedImages([]); // Clear previous images
+    // Use optimized prompt if available, otherwise fallback to input prompt
+    const promptToUse = optimizedPrompt || inputPrompt;
 
-    // Simulate backend processing time (2 seconds)
+    if (!promptToUse.trim()) {
+      alert("Please provide a prompt to generate images.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setGeneratedImages([]); 
+
+    // Simulate backend processing time for UI testing
     setTimeout(() => {
-      // Create mock data to populate the UI grid
       const mockResults = [
         {
           id: 1,
@@ -67,7 +119,7 @@ const Dashboard = () => {
         },
         {
           id: 3,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Back+View",
+          url: "https://placehold.co/400x400/eeeeee/333333?text=Top+View",
           score: 0.15,
           status: "REJECTED"
         },
@@ -86,34 +138,70 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
+      {/* Header */}
       <header className="header">
         <h1>Gulfstream Text to 3D Model Generator</h1>
         <h2>Dashboard</h2>
       </header>
 
+      {/* Main Content Area */}
       <main className="main-content">
+
         {/* COLUMN 1: INPUT */}
         <section className="column">
           <div className="column-header">INPUT: Prompt Engineering</div>
 
+          {/* Original Prompt Textarea */}
           <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="A futuristic, sleek white chair..."
+            placeholder="A futuristic, sleek white chair with blue LED light accents"
+            value={inputPrompt}
+            onChange={(e) => setInputPrompt(e.target.value)}
+            disabled={isOptimizing || isGenerating}
           />
 
-          <button className="action-btn">Optimize Prompt</button>
+          {/* Prompt Service Dropdown */}
+          <select
+            className="dropdown-btn"
+            value={selectedPromptService}
+            onChange={(e) => setSelectedPromptService(e.target.value)}
+            disabled={isOptimizing || isGenerating}
+          >
+            {promptServices.map((service) => (
+              <option key={service.value} value={service.value}>
+                {service.label}
+              </option>
+            ))}
+          </select>
 
+          {/* Optimize Prompt Button */}
+          <button
+            className="action-btn"
+            onClick={handleOptimizePrompt}
+            disabled={isOptimizing || isGenerating || !inputPrompt.trim()}
+          >
+            {isOptimizing ? 'Optimizing...' : 'Optimize Prompt'}
+          </button>
+
+          {error && (
+            <div style={{ color: 'red', fontSize: '14px', margin: '8px 0' }}>
+              {error}
+            </div>
+          )}
+
+          {/* Optimized Prompt Output (Editable) */}
           <textarea
-            placeholder="Example optimized prompt"
-            readOnly
+            placeholder="Optimized prompt will appear here (editable)"
+            value={optimizedPrompt}
+            onChange={(e) => setOptimizedPrompt(e.target.value)}
+            disabled={isGenerating}
           />
 
-          {/* DYNAMIC DROPDOWN */}
+          {/* Dynamic Image Model Dropdown (Ticket 12) */}
           <select 
             className="dropdown-btn" 
             value={selectedImageModel} 
             onChange={(e) => setSelectedImageModel(e.target.value)}
+            disabled={isGenerating}
           >
             <option value="">Choose Image Model</option>
             {imageModels.map((modelName) => (
@@ -123,22 +211,22 @@ const Dashboard = () => {
             ))}
           </select>
 
-          {/* GENERATE BUTTON */}
+          {/* Generate Batch Images Button (Ticket 12) */}
           <button 
             className="action-btn" 
-            onClick={handleGenerateImages} 
-            disabled={isGenerating}
+            onClick={handleGenerateImages}
+            disabled={isGenerating || !selectedImageModel}
           >
-            {isGenerating ? "Generating..." : "Generate Images"}
+            {isGenerating ? 'Generating Images...' : 'Generate Batch Images'}
           </button>
         </section>
 
-        {/* COLUMN 2: PROCESSING & QUALITY CONTROL */}
+        {/* COLUMN 2: PROCESSING (Ticket 12) */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
-          
+
           <div style={{fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', textAlign: 'center'}}>
-            *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher on semantic accuracy to pass to 3D generation.
+            *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher to pass to 3D generation.
           </div>
 
           <div className="image-grid">
@@ -150,14 +238,14 @@ const Dashboard = () => {
               <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... (Mocking)</p>
             )}
 
-            {/* DYNAMICALLY POPULATE RETURNED IMAGES */}
+            {/* Dynamically Populated Image Cards */}
             {generatedImages.map((img) => (
               <div key={img.id} className="image-card">
                 <div className="image-slot">
                   <div className={`badge ${img.status.toLowerCase()}`}>
                     {img.status}
                   </div>
-                  <img src={img.url} alt="Generated" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
                   <div className="overlay-text">
                     <div>Generated Image</div>
                     <div>CLIP Score: {img.score}</div>
@@ -178,10 +266,12 @@ const Dashboard = () => {
 
           <button className="action-btn">Generate 3D Asset</button>
 
+          {/* 3D Asset Placeholder */}
           <div className="asset-display">
-              <span style={{color: '#888'}}>3D Viewer Placeholder</span>
+              {/* 3D Model Canvas goes here */}
           </div>
 
+          {/* New Download Row */}
           <div className="download-row">
             <select className="dropdown-btn download-select">
               <option value="obj">Download as OBJ</option>
@@ -189,7 +279,9 @@ const Dashboard = () => {
             </select>
             <button className="action-btn download-trigger">Download</button>
           </div>
+
         </section>
+
       </main>
     </div>
   );
