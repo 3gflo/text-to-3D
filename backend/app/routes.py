@@ -1,4 +1,5 @@
 import base64
+import time
 
 from flask import Blueprint, request, send_file, jsonify, current_app
 from io import BytesIO
@@ -16,7 +17,7 @@ def health_check():
 def generate_image():
     data = request.get_json()
     optimized_prompt = data.get('optimized_prompt')
-    service_choice = data.get('service', 'imagen')
+    service_choice = data.get('service')
 
     if not optimized_prompt:
         return {'error': 'No prompt provided'}, 400
@@ -72,7 +73,7 @@ def optimize_prompt():
 
     optimized_prompt = service.generate(prompt)
     if optimized_prompt:
-        from services.generation.prompt_generator import SYSTEM_INSTRUCTION
+        from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
         # Try to log to Google Sheets, but don't fail if it errors
         try:
@@ -135,7 +136,7 @@ def generate_3d_model():
             "3D Model Generator": service_choice,
 
             # temp, need to convert bytes to 3d model/link the file
-            "Model link": model_bytes
+            "Model link": "Pending implementation"
         }
         sheets_manager.update_row(sheets_data, "Sheet1")
 
@@ -151,7 +152,7 @@ def generate_3d_model():
         print(f"3D Generation Error Type: {type(e).__name__}")
         return {'error': 'Internal server error during 3D generation'}, 500
 
-@api_bp.route('/available-models', methods=['GET'])
+@api_bp.route('/available-models', methods=['POST'])
 def available_models():
     data = request.get_json()
     asset_type = data.get('asset_type')
@@ -166,7 +167,30 @@ def available_models():
         case _:
             return {'error': 'Invalid asset type'}, 400
 
-    services = registry.get_services().keys()
+    services = list(registry.get_services().keys())
 
 
-    return jsonify({'services': services}, 200)
+    return jsonify({'services': services}), 200
+
+
+@api_bp.route('/evaluate-image', methods=['POST'])
+def evaluate_image():
+    data = request.get_json()
+    images_data = data.get('images', [])
+    prompt = data.get('prompt', '')
+
+    if not images_data or not prompt:
+        return {'error': 'Images and prompt are required'}, 400
+
+    # Placeholder for the actual CLIP score module.
+    evaluations = []
+    for img_str in images_data:
+        # Mocking a score for now
+        time.sleep(3) # temp sleep to show evaluating state
+        mock_score = 0.0
+        evaluations.append({'score': mock_score})
+
+    return jsonify({
+        'status': 'success',
+        'evaluations': evaluations
+    }), 200

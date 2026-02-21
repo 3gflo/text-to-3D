@@ -44,7 +44,7 @@ You will construct this prompt by rigorously following a 4-layer framework:
 
 class PromptServiceRegistry:
     def __init__(self, app_config):
-        google_key = app_config.get('GOOGLE_API_KEY')
+        google_key = app_config.get('GOOGLE_KEY')
         hf_token = app_config.get('HF_TOKEN')
 
         self._services = {
@@ -71,6 +71,7 @@ class GeminiPromptGenerator(BasePromptGenerator):
         self.model_name = 'gemini-2.5-flash'
 
     def generate(self, prompt: str) -> str | None:
+        print("Trying gemini prompt...")
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -91,6 +92,7 @@ class GPTOSSPromptGenerator(BasePromptGenerator):
         self.model_name = 'openai/gpt-oss-20b:groq'
 
     def generate(self, prompt: str) -> str | None:
+        print("Trying OpenAI prompt...")
         try:
             completion = self.client.chat.completions.create(
                 model=self.model_name,

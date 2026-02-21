@@ -1,55 +1,81 @@
 // src/components/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
+import '@google/model-viewer' // npm install @google/model-viewer
 
 const Dashboard = () => {
-  // State management for prompt optimization (From Main)
+  // State management for prompt optimization
   const [inputPrompt, setInputPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
   const [optimizedPrompt, setOptimizedPrompt] = useState("");
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [error, setError] = useState("");
-  const [selectedPromptService, setSelectedPromptService] = useState("gpt-oss");
 
-  // State management for image generation & selection (Ticket 12)
+  // Dynamic Model States
+  const [textModels, setTextModels] = useState([]);
+  const [selectedPromptService, setSelectedPromptService] = useState("");
+
   const [imageModels, setImageModels] = useState([]);
   const [selectedImageModel, setSelectedImageModel] = useState("");
+
+  const [threeDModels, setThreeDModels] = useState([]);
+  const [selected3DModel, setSelected3DModel] = useState("");
+
+  // State management for image generation & selection
   const [generatedImages, setGeneratedImages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  
+  const [selectedImageBase64, setSelectedImageBase64] = useState(null);
   const CLIP_THRESHOLD = 0.25;
 
-  // Available prompt optimization services (From Main)
-  const promptServices = [
-    { value: "gpt-oss", label: "GPT-OSS " },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 " },
-  ];
+  // 3D generation state
+  const [isGenerating3D, setIsGenerating3D] = useState(false);
+  const [modelUrl, setModelUrl] = useState(null);
 
-  // Fetch available image models on mount (Ticket 12)
+  // Helper to categorize the numerical CLIP score
+  const getClipLabel = (score) => {
+    if (score === 0.0 || score === null || score === "N/A") return "N/A";
+    if (score < 0.2) return "Low"; // arbitrary for temp use
+    if (score < 0.6) return "Medium"; // arbitrary for temp use
+    return "High";
+  };
+
+  // Fetch available models on mount for all asset types
   useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        const response = await fetch('/api/available-models', {
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ asset_type: 'image' })
-        });
+    const fetchAvailableModels = async () => {
+      const assetTypes = ['text', 'image', '3D'];
 
-        if (response.ok) {
-          const data = await response.json();
-          setImageModels(data.services || []);
-        } else {
-          throw new Error("Backend not ready");
+      const stateSetters = {
+        text: { setList: setTextModels, setSelected: setSelectedPromptService },
+        image: { setList: setImageModels, setSelected: setSelectedImageModel },
+        '3D': { setList: setThreeDModels, setSelected: setSelected3DModel }
+      };
+
+      for (const type of assetTypes) {
+        try {
+          const response = await fetch('/api/available-models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asset_type: type })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log(data)
+            const fetchedModels = data.services || [];
+
+            stateSetters[type].setList(fetchedModels);
+          } else {
+            throw new Error(`Backend not ready for ${type}`);
+          }
+        } catch (error) {
+          console.warn(`Backend unavailable for ${type} with error ${error}`);
         }
-      } catch (error) {
-        console.warn("Backend unavailable, using mock image models for UI testing.");
-        setImageModels(["imagen", "nano-banana", "GPT-image"]); 
       }
     };
 
-    fetchModels();
+    fetchAvailableModels();
   }, []);
 
-  // Handler for optimizing prompt via backend API (From Main)
+  // Handler for optimizing prompt via backend API
   const handleOptimizePrompt = async () => {
     if (!inputPrompt.trim()) {
       setError("Please enter a prompt to optimize");
@@ -84,14 +110,13 @@ const Dashboard = () => {
     }
   };
 
-  // Handler for Image Generation & Mock CLIP Scoring (Ticket 12)
+  // Handler for Image Generation fetching from Backend
   const handleGenerateImages = async () => {
     if (!selectedImageModel || selectedImageModel === "Choose Image Model") {
       alert("Please select an image model from the dropdown first.");
       return;
     }
 
-    // Use optimized prompt if available, otherwise fallback to input prompt
     const promptToUse = optimizedPrompt || inputPrompt;
 
     if (!promptToUse.trim()) {
@@ -100,40 +125,120 @@ const Dashboard = () => {
     }
 
     setIsGenerating(true);
-    setGeneratedImages([]); 
+    setGeneratedImages([]);
+    setSelectedImageBase64(null); // Clear previous selection
 
-    // Simulate backend processing time for UI testing
-    setTimeout(() => {
-      const mockResults = [
-        {
-          id: 1,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Front+View",
-          score: 0.36,
-          status: "ACCEPTED"
-        },
-        {
-          id: 2,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Left+View",
-          score: 0.28,
-          status: "ACCEPTED"
-        },
-        {
-          id: 3,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Top+View",
-          score: 0.15,
-          status: "REJECTED"
-        },
-        {
-          id: 4,
-          url: "https://placehold.co/400x400/eeeeee/333333?text=Right+View",
-          score: 0.18,
-          status: "REJECTED"
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          optimized_prompt: promptToUse,
+          service: selectedImageModel
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to generate images');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'success' && data.images) {
+        // Map the backend base64 strings to the UI array format
+        const fetchedResults = data.images.map((imgStr, index) => ({
+          id: index + 1,
+          url: imgStr, // The python backend already appends "data:image/png;base64,"
+          score: "N/A", // Placeholder until backend CLIP evaluation is implemented
+          status: "EVALUATING" // Placeholder
+        }));
+
+        setGeneratedImages(fetchedResults);
+
+        // Evaluate the Images (CLIP Score)
+        try {
+          const evalResponse = await fetch('/api/evaluate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              images: data.images,
+              prompt: promptToUse
+            })
+          });
+
+          if (evalResponse.ok) {
+            const evalData = await evalResponse.json();
+            if (evalData.status === 'success') {
+              // Update state with the new scores and categorical statuses
+              const scoredResults = fetchedResults.map((img, idx) => {
+                const score = evalData.evaluations[idx].score;
+                return {
+                  ...img,
+                  score: score,
+                  status: getClipLabel(score).toUpperCase() // Sets status to LOW, MEDIUM, or HIGH
+                };
+              });
+              setGeneratedImages(scoredResults);
+            }
+          }
+        } catch (evalError) {
+           console.error("Evaluation failed:", evalError);
+           // Fallback to N/A instead of ACCEPTED if the server errors
+           const fallbackResults = fetchedResults.map(img => ({...img, status: "N/A"}));
+           setGeneratedImages(fallbackResults);
         }
-      ];
-
-      setGeneratedImages(mockResults);
+      } else {
+        throw new Error("Unexpected response structure from server.");
+      }
+    } catch (error) {
+      console.error("Error generating images:", error);
+      alert(error.message || "Failed to generate images. Check console.");
+    } finally {
       setIsGenerating(false);
-    }, 2000);
+    }
+  };
+
+  const handleGenerate3DAsset = async () => {
+    if (!selectedImageBase64) {
+      alert("Please generate or select an image first!");
+      return;
+    }
+
+    setIsGenerating3D(true);
+    setModelUrl(null); // Clear the viewer before starting
+
+    try {
+      const response = await fetch('/api/generate-3d-model', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          images: [selectedImageBase64],
+          service: selected3DModel
+        }),
+      });
+
+      if (!response.ok) {
+        // Attempt to parse the backend error message if available
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      // Convert the returned binary to a local blob URL
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      // Update state to render the model
+      setModelUrl(objectUrl);
+
+    } catch (error) {
+      console.error("Failed to generate 3D model:", error);
+      alert("Error generating 3D model. Check console.");
+    } finally {
+      setIsGenerating3D(false);
+    }
   };
 
   return (
@@ -166,9 +271,10 @@ const Dashboard = () => {
             onChange={(e) => setSelectedPromptService(e.target.value)}
             disabled={isOptimizing || isGenerating}
           >
-            {promptServices.map((service) => (
-              <option key={service.value} value={service.value}>
-                {service.label}
+            <option value="">Choose Text Model</option>
+            {textModels.map((modelName) => (
+              <option key={modelName} value={modelName}>
+                {modelName}
               </option>
             ))}
           </select>
@@ -196,10 +302,10 @@ const Dashboard = () => {
             disabled={isGenerating}
           />
 
-          {/* Dynamic Image Model Dropdown (Ticket 12) */}
-          <select 
-            className="dropdown-btn" 
-            value={selectedImageModel} 
+          {/* Dynamic Image Model Dropdown */}
+          <select
+            className="dropdown-btn"
+            value={selectedImageModel}
             onChange={(e) => setSelectedImageModel(e.target.value)}
             disabled={isGenerating}
           >
@@ -211,9 +317,9 @@ const Dashboard = () => {
             ))}
           </select>
 
-          {/* Generate Batch Images Button (Ticket 12) */}
-          <button 
-            className="action-btn" 
+          {/* Generate Batch Images Button */}
+          <button
+            className="action-btn"
             onClick={handleGenerateImages}
             disabled={isGenerating || !selectedImageModel}
           >
@@ -221,13 +327,13 @@ const Dashboard = () => {
           </button>
         </section>
 
-        {/* COLUMN 2: PROCESSING (Ticket 12) */}
+        {/* COLUMN 2: PROCESSING */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
 
-          <div style={{fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', textAlign: 'center'}}>
-            *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher to pass to 3D generation.
-          </div>
+{/*           <div style={{fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', textAlign: 'center'}}> */}
+{/*             *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher to pass to 3D generation. */}
+{/*           </div> */}
 
           <div className="image-grid">
             {generatedImages.length === 0 && !isGenerating && (
@@ -235,12 +341,21 @@ const Dashboard = () => {
             )}
 
             {isGenerating && (
-              <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... (Mocking)</p>
+              <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... Please wait.</p>
             )}
 
             {/* Dynamically Populated Image Cards */}
             {generatedImages.map((img) => (
-              <div key={img.id} className="image-card">
+              <div
+                key={img.id}
+                className="image-card"
+                onClick={() => setSelectedImageBase64(img.url)}
+                style={{
+                  cursor: 'pointer',
+                  border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
+                  boxSizing: 'border-box'
+                }}
+              >
                 <div className="image-slot">
                   <div className={`badge ${img.status.toLowerCase()}`}>
                     {img.status}
@@ -248,7 +363,11 @@ const Dashboard = () => {
                   <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
                   <div className="overlay-text">
                     <div>Generated Image</div>
-                    <div>CLIP Score: {img.score}</div>
+                    <div>
+                      CLIP Score: {img.score !== "N/A"
+                        ? `${getClipLabel(img.score)} (${img.score})`
+                        : "N/A"}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -256,32 +375,67 @@ const Dashboard = () => {
           </div>
         </section>
 
-        {/* COLUMN 3: OUTPUT */}
+       {/* COLUMN 3: OUTPUT */}
         <section className="column output-column">
           <div className="column-header">OUTPUT: Final 3D Model</div>
 
-          <select className="dropdown-btn">
-            <option>Choose 3D Asset Model</option>
+          {/* Dynamic 3D Model Dropdown */}
+          <select
+            className="dropdown-btn"
+            value={selected3DModel}
+            onChange={(e) => setSelected3DModel(e.target.value)}
+          >
+            <option value="">Choose 3D Generator</option>
+            {threeDModels.map((modelName) => (
+              <option key={modelName} value={modelName}>
+                {modelName}
+              </option>
+            ))}
           </select>
 
-          <button className="action-btn">Generate 3D Asset</button>
+          {/* Bind button to fetch function */}
+          <button
+            className="action-btn"
+            onClick={handleGenerate3DAsset}
+            disabled={isGenerating3D}
+          >
+            {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
+          </button>
 
-          {/* 3D Asset Placeholder */}
-          <div className="asset-display">
-              {/* 3D Model Canvas goes here */}
+          {/* 3D Asset Display Canvas */}
+          <div className="asset-display" style={{ overflow: 'hidden', position: 'relative' }}>
+              {isGenerating3D && (
+                <div style={{ color: 'white', textAlign: 'center' }}>
+                  <p>Building 3D model...</p>
+                  <small>This may take a minute.</small>
+                </div>
+              )}
+
+              {!isGenerating3D && modelUrl && (
+                <model-viewer
+                  src={modelUrl}
+                  auto-rotate
+                  camera-controls
+                  environment-image="neutral" // Adds a default HDRI lighting environment
+                  exposure="1"                // Adjusts the brightness
+                  shadow-intensity="1"        // Grounds the model with a shadow
+                  style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
+                ></model-viewer>
+              )}
+
+              {!isGenerating3D && !modelUrl && (
+                <p style={{ color: '#666' }}>No model generated yet.</p>
+              )}
           </div>
 
-          {/* New Download Row */}
           <div className="download-row">
             <select className="dropdown-btn download-select">
+              <option value="FBX">Download as FBX</option>
               <option value="obj">Download as OBJ</option>
-              <option value="fbx">Download as FBX</option>
             </select>
             <button className="action-btn download-trigger">Download</button>
           </div>
-
         </section>
-
       </main>
     </div>
   );
