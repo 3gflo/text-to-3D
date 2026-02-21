@@ -104,6 +104,12 @@ textarea {
   font-size: 0.95rem;
 }
 
+textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #f5f5f5;
+}
+
 /* --- BUTTONS & DROPDOWNS --- */
 
 .action-btn, .dropdown-btn {
@@ -136,6 +142,12 @@ textarea {
 
 .action-btn:hover, .dropdown-btn:hover {
   opacity: 0.9;
+}
+
+.action-btn:disabled, .dropdown-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #6c757d;
 }
 
 /* --- DOWNLOAD ROW STYLES --- */

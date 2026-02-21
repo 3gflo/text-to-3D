@@ -53,7 +53,7 @@ class PromptServiceRegistry:
         }
 
     def get_service(self, service_name):
-        return self._services.get(service_name.lower(), self._services["gemini"])
+        return self._services.get(service_name.lower(), self._services["gemini-2.5-flash"])
 
     def get_services(self):
         return self._services
