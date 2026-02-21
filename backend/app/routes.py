@@ -37,7 +37,7 @@ def generate_image():
             # temp, need to convert bytes to image/link the file
             "Image 1": image_bytes
         }
-        sheets_manager.update_row(sheets_data, "Sheet 1")
+        sheets_manager.update_row(sheets_data, "Sheet1")
 
         return send_file(BytesIO(image_bytes), mimetype='image/png')
 
