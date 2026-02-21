@@ -73,7 +73,7 @@ def optimize_prompt():
 
     optimized_prompt = service.generate(prompt)
     if optimized_prompt:
-        from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
+        from .services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
         # Try to log to Google Sheets, but don't fail if it errors
         try:
@@ -84,7 +84,7 @@ def optimize_prompt():
                 "Optimized Image Prompt": optimized_prompt,
                 "System Prompt": SYSTEM_INSTRUCTION,
             }
-            sheets_manager.update_row(sheets_data, "Sheet 1")
+            sheets_manager.update_row(sheets_data, "Sheet1")
         except Exception as e:
             print(f"Warning: Failed to log to Google Sheets: {e}")
 
