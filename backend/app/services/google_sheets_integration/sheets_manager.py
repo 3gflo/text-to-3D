@@ -5,6 +5,12 @@ Implemented as a singleton to ensure a single point of data persistence.
 
 from app.services.google_sheets_integration.sheets_client import GoogleSheetsClient
 
+class MockSheetManager:
+    def __init__(self, *args, **kwargs):
+        pass
+    def update_row(self, data, sheet_name):
+        print(f"MockSheetManager: Skipping write for {sheet_name}")
+
 class SheetManager:
     _instance = None
     _initialized = False
