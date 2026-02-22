@@ -4,9 +4,10 @@ import os
 import json
 
 BASE_URL = "http://127.0.0.1:5055"
-PROMPT = "A cute isometric low-poly style cottage with a red roof, white walls, on a floating island"
-IMAGE_SERVICE = "imagen"   # Options: imagen, nano-banana, GPT-image
-THREED_SERVICE = "trellis" # Options: trellis, hunyuan (Hunyuan requires >3 images)
+PROMPT = "A black original xbox one controller"
+LLM_SERVICE = "gemini-2.5-flash"    # Options: gemini-2.5-flash, gpt-oss
+IMAGE_SERVICE = "GPT-image"            # Options: imagen, nano-banana, GPT-image
+THREED_SERVICE = "hunyuan-pro"      # Options: trellis, hunyuan (Hunyuan requires >3 images)
 
 def run_pipeline():
     print(f"--- Starting Pipeline ---")
@@ -14,16 +15,33 @@ def run_pipeline():
     # Generate images
     print(f"1. Generating images with prompt: '{PROMPT}'...")
     
-    payload = {
-        "optimized_prompt": PROMPT, 
-        "service": IMAGE_SERVICE,
-        "num_images": 3 
+    prompt_payload = {
+        "prompt": PROMPT,
+        "service": LLM_SERVICE
     }
     
     try:
+        prompt_response = requests.post(f"{BASE_URL}/api/optimize-prompt", json=prompt_payload)
+        prompt_response.raise_for_status()
+        response_data = prompt_response.json()
+        
+        optimized_prompt = response_data.get('optimized_prompt')
+        print(f"   -> Optimized Prompt: {optimized_prompt}...")
+    except requests.exceptions.RequestException as e:
+        print(f"Error optimizing prompt: {e}")
+        if 'prompt_response' in locals() and prompt_response: 
+            print(prompt_response.text)
+        return
+
+    image_payload = {
+            "optimized_prompt": optimized_prompt, 
+            "service": IMAGE_SERVICE, 
+        }
+
+    try:
         img_response = requests.post(
             f"{BASE_URL}/api/generate-image",
-            json=payload
+            json=image_payload
         )
         img_response.raise_for_status() # Raise error for 400/500 codes
     except requests.exceptions.RequestException as e:
