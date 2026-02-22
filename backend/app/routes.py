@@ -30,7 +30,7 @@ def generate_image():
     if not service:
         return {'error': f'Service {service_choice} not supported'}, 400
 
-    images = service.generate(optimized_prompt)
+    images = service.generate(optimized_prompt, num_images = 3)
     if images and len(images) > 0:
         b64_images = []
         for img_bytes in images:

@@ -28,7 +28,7 @@ class ImageServiceRegistry:
 
 class BaseImageGenerator(ABC):
     @abstractmethod
-    def generate(self, prompt: str) -> list[bytes]:
+    def generate(self, prompt: str, num_images: int = 1) -> list[bytes]:
         pass
 
 # Imagen-4.0
@@ -40,13 +40,13 @@ class Imagen(BaseImageGenerator):
         )
         self.model_name = 'imagen-4.0-generate-001'
 
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         try:
             response = self.client.models.generate_images(
                 model='imagen-4.0-generate-001',
                 prompt=prompt,
-                config = types.GenerateImagesConfig(number_of_images = 1)
-            )
+                config=types.GenerateImagesConfig(number_of_images=num_images)
+                )
             if response.generated_images:
                 return [img.image.image_bytes for img in response.generated_images]
         except Exception as e:
@@ -63,13 +63,14 @@ class NanoBanana(BaseImageGenerator):
 
         self.model_name = 'gemini-3-pro-image-preview'
 
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     response_modalities=['IMAGE'],
+                    candidate_count=num_images
                 )
             )
             images = []
@@ -90,11 +91,12 @@ class GPT_image(BaseImageGenerator):
         self.client = OpenAI(api_key=api_key)
         self.model_name = "gpt-image-1.5"
 
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         try:
             response = self.client.images.generate(
                 model=self.model_name,
                 prompt=prompt,
+                n = num_images
                 # size and quality omitted
             )
             images = []
@@ -110,7 +112,7 @@ class GPT_image(BaseImageGenerator):
 
 # Used for testing in case an API key fails
 class MockImageGenerator(BaseImageGenerator):
-    def generate(self, prompt: str):
+    def generate(self, prompt: str, num_images: int = 1):
         # Creates a 100x100 solid blue square
         img = Image.new('RGB', (100, 100), color='blue')
         img_byte_arr = io.BytesIO()
@@ -118,4 +120,4 @@ class MockImageGenerator(BaseImageGenerator):
         bytes_data = img_byte_arr.getvalue()
         
         print(f"DEBUG: Mock Generator used for prompt: {prompt}")
-        return bytes_data
+        return [bytes_data] * num_images

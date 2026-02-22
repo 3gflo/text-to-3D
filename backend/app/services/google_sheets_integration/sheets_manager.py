@@ -2,7 +2,7 @@
 High-level proxy for interacting with a specific spreadsheet.
 Implemented as a singleton to ensure a single point of data persistence.
 """
-from backend.app.services.google_sheets_integration.sheets_client import GoogleSheetsClient
+from app.services.google_sheets_integration.sheets_client import GoogleSheetsClient
 
 class MockSheetManager:
     def __init__(self, *args, **kwargs):
