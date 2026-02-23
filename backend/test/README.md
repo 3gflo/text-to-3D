@@ -4,7 +4,7 @@
 Before running the tests for the first time, you must install the package in "editable" mode. From the project root, run:
 
 ```bash
-  pip install -e .
+  
 ```
 
 ### Result

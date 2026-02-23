@@ -182,13 +182,32 @@ def evaluate_image():
     if not images_data or not prompt:
         return {'error': 'Images and prompt are required'}, 400
 
-    # Placeholder for the actual CLIP score module.
+    # Get the initialized CLIP service
+    scorer = current_app.extensions.get('clip_scorer')
     evaluations = []
+
     for img_str in images_data:
-        # Mocking a score for now
-        time.sleep(3) # temp sleep to show evaluating state
-        mock_score = 0.0
-        evaluations.append({'score': mock_score})
+        score = 0.0
+        
+        if scorer:
+            try:
+                # The frontend sends "data:image/png;base64,iVBORw..."
+                # We need to strip the prefix to decode the raw bytes
+                if ',' in img_str:
+                    b64_data = img_str.split(',')[1]
+                else:
+                    b64_data = img_str
+                
+                # Decode to raw image bytes
+                img_bytes = base64.b64decode(b64_data)
+                
+                # Calculate actual score
+                score = scorer.calculate_score(img_bytes, prompt)
+                
+            except Exception as e:
+                print(f"Error decoding or scoring image: {e}")
+
+        evaluations.append({'score': score})
 
     return jsonify({
         'status': 'success',
