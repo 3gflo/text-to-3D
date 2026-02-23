@@ -31,10 +31,17 @@ const Dashboard = () => {
   const [modelUrl, setModelUrl] = useState(null);
 
   // Helper to categorize the numerical CLIP score
+  // Helper to categorize the numerical CLIP score
   const getClipLabel = (score) => {
     if (score === 0.0 || score === null || score === "N/A") return "N/A";
-    if (score < 0.2) return "Low"; // arbitrary for temp use
-    if (score < 0.6) return "Medium"; // arbitrary for temp use
+    
+    // A score below 0.24 usually means the image missed the prompt entirely
+    if (score < 0.24) return "Low"; 
+    
+    // A score between 0.24 and 0.29 is average/acceptable alignment
+    if (score < 0.29) return "Medium"; 
+    
+    // A score of 0.29+ is exceptionally good semantic alignment for this model
     return "High";
   };
 
@@ -179,6 +186,16 @@ const Dashboard = () => {
                   status: getClipLabel(score).toUpperCase() // Sets status to LOW, MEDIUM, or HIGH
                 };
               });
+
+              // --- NEW SORTING LOGIC ---
+              // Sort the array in descending order (highest score first)
+              // We use a fallback to 0 in case a score somehow comes back as "N/A"
+              scoredResults.sort((a, b) => {
+                const scoreA = typeof a.score === 'number' ? a.score : 0;
+                const scoreB = typeof b.score === 'number' ? b.score : 0;
+                return scoreB - scoreA;
+              });
+              
               setGeneratedImages(scoredResults);
             }
           }
