@@ -522,7 +522,7 @@ const Dashboard = () => {
             onClick={() => setShowSaveModal(true)}
             disabled={!modelUrl}
           >
-            Save and start new job (3D Model will be cleared)
+            Save and start new job (only the 3D Model will be cleared)
           </button>
 
         </section>
