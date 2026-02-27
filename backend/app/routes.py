@@ -38,15 +38,6 @@ def generate_image():
             # Add data URI prefix
             b64_images.append(f"data:image/png;base64,{b64_str}")
 
-        sheets_manager = current_app.extensions['sheet_manager']
-        sheets_data = {
-            "Image Generator": service_choice,
-
-            # temp, need to convert bytes to image/link the file
-            "Image 1": None
-        }
-        sheets_manager.update_row(sheets_data, "Sheet1")
-
         return jsonify({
             'status': 'success',
             'images': b64_images,
@@ -73,20 +64,6 @@ def optimize_prompt():
 
     optimized_prompt = service.generate(prompt)
     if optimized_prompt:
-        from .services.generation.prompt_generator import SYSTEM_INSTRUCTION
-
-        # Try to log to Google Sheets, but don't fail if it errors
-        try:
-            sheets_manager = current_app.extensions['sheet_manager']
-            sheets_data = {
-                "Image Prompt": prompt,
-                "LLM Used": service_choice,
-                "Optimized Image Prompt": optimized_prompt,
-                "System Prompt": SYSTEM_INSTRUCTION,
-            }
-            sheets_manager.add_entry(sheets_data, "Sheet1")
-        except Exception as e:
-            print(f"Warning: Failed to log to Google Sheets: {e}")
 
         return {
             'success': True,
@@ -130,15 +107,6 @@ def generate_3d_model():
 
         if not model_bytes:
             return {'error': 'Failed to generate 3D model'}, 500
-
-        sheets_manager = current_app.extensions['sheet_manager']
-        sheets_data = {
-            "3D Model Generator": service_choice,
-
-            # temp, need to convert bytes to 3d model/link the file
-            "Model link": "Pending implementation"
-        }
-        sheets_manager.update_row(sheets_data, "Sheet1")
 
         # Return the GLB file
         return send_file(
@@ -213,3 +181,36 @@ def evaluate_image():
         'status': 'success',
         'evaluations': evaluations
     }), 200
+
+@api_bp.route('/save-job', methods=['POST'])
+def save_job():
+    from services.generation.prompt_generator import SYSTEM_INSTRUCTION
+    data = request.get_json()
+
+    try:
+        sheets_manager = current_app.extensions['sheet_manager']
+
+        # Consolidate all data into a single row update, gracefully handling missing data
+        sheets_data = {
+            "User": data.get('user', ''),
+            "Description": data.get('description', ''),
+            "Image Prompt": data.get('input_prompt', ''),
+            "LLM Used": data.get('text_model', ''),
+            "System Prompt": SYSTEM_INSTRUCTION,
+            "Optimized Image Prompt": data.get('optimized_prompt', ''),
+            "Image Generator": data.get('image_model', ''),
+            "Image 1": data.get('image_1', ''),
+            "Image 2": data.get('image_2', ''),
+            "Image 3": data.get('image_3', ''),
+            "Image 4": data.get('image_4', ''),
+            "3D Model Generator": data.get('three_d_model', ''),
+            "Model link": data.get('model_link', ''),
+            "Analysis": data.get('analysis', ''),
+        }
+
+        sheets_manager.update_row(sheets_data, "Sheet1")
+
+        return jsonify({'status': 'success'}), 200
+    except Exception as e:
+        print(f"Failed to save job to Sheets: {e}")
+        return {'error': 'Failed to save job to Sheets'}, 500
