@@ -266,7 +266,6 @@ const Dashboard = () => {
 
       // LOCK THE UI AFTER SUCCESSFUL GENERATION
       setIsJobLocked(true);
-      setShowSaveModal(true);
 
     } catch (error) {
       console.error("Failed to generate 3D model:", error);
@@ -510,16 +509,21 @@ const Dashboard = () => {
             <button className="action-btn download-trigger" disabled={!modelUrl}>Download</button>
           </div>
 
-          {/* Add this "Force Save" button just in case they close the modal accidentally */}
-          {isJobLocked && !showSaveModal && (
-             <button
-                className="action-btn"
-                style={{ backgroundColor: 'var(--badge-green)', width: '80%', marginTop: '1rem' }}
-                onClick={() => setShowSaveModal(true)}
-              >
-                Open Save Dialog
-              </button>
-          )}
+          {/* Save button appears below downloads when job is locked/model is ready */}
+          <button
+            className="action-btn"
+            style={{
+              backgroundColor: modelUrl ? 'var(--badge-green)' : '#6c757d',
+              width: '80%',
+              marginTop: '1rem',
+              cursor: modelUrl ? 'pointer' : 'not-allowed',
+              opacity: modelUrl ? 1 : 0.5
+            }}
+            onClick={() => setShowSaveModal(true)}
+            disabled={!modelUrl}
+          >
+            Save and start new job (3D Model will be cleared)
+          </button>
 
         </section>
       </main>
