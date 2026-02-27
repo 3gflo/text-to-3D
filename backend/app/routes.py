@@ -1,8 +1,9 @@
 import base64
-import time
 
 from flask import Blueprint, request, send_file, jsonify, current_app
 from io import BytesIO
+
+from backend.app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
 # Define the blueprint
 api_bp = Blueprint('api', __name__)
@@ -184,7 +185,6 @@ def evaluate_image():
 
 @api_bp.route('/save-job', methods=['POST'])
 def save_job():
-    from services.generation.prompt_generator import SYSTEM_INSTRUCTION
     data = request.get_json()
 
     try:
