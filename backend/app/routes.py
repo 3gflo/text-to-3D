@@ -7,6 +7,8 @@ from io import BytesIO
 # Define the blueprint
 api_bp = Blueprint('api', __name__)
 
+DEFAULT_VIEWPOINTS = ["front", "back", "left", "right"]
+
 
 @api_bp.route('/health')
 def health_check():
@@ -18,6 +20,7 @@ def generate_image():
     data = request.get_json()
     optimized_prompt = data.get('optimized_prompt')
     service_choice = data.get('service')
+    viewpoints = data.get('viewpoints', DEFAULT_VIEWPOINTS)
 
     if not optimized_prompt:
         return {'error': 'No prompt provided'}, 400
@@ -29,31 +32,39 @@ def generate_image():
     if not service:
         return {'error': f'Service {service_choice} not supported'}, 400
 
-    images = service.generate(optimized_prompt, num_images = 3)
-    if images and len(images) > 0:
-        b64_images = []
-        for img_bytes in images:
-             # Encode to base64 string
-            b64_str = base64.b64encode(img_bytes).decode('utf-8')
-            # Add data URI prefix
-            b64_images.append(f"data:image/png;base64,{b64_str}")
+    viewpoint_images = {}
+    failed_viewpoints = []
 
-        sheets_manager = current_app.extensions['sheet_manager']
-        sheets_data = {
-            "Image Generator": service_choice,
+    for viewpoint in viewpoints:
+        viewpoint_prompt = f"{optimized_prompt}, {viewpoint} view, single view only"
+        try:
+            images = service.generate(viewpoint_prompt, num_images=1)
+            if images and len(images) > 0:
+                b64_str = base64.b64encode(images[0]).decode('utf-8')
+                viewpoint_images[viewpoint] = f"data:image/png;base64,{b64_str}"
+            else:
+                viewpoint_images[viewpoint] = None
+                failed_viewpoints.append(viewpoint)
+        except Exception as e:
+            print(f"Image generation failed for {viewpoint} view: {e}")
+            viewpoint_images[viewpoint] = None
+            failed_viewpoints.append(viewpoint)
 
-            # temp, need to convert bytes to image/link the file
-            "Image 1": None
-        }
-        sheets_manager.update_row(sheets_data, "Sheet1")
+    # If all viewpoints failed, return error
+    if len(failed_viewpoints) == len(viewpoints):
+        return {'error': 'Image generation failed for all viewpoints'}, 500
 
-        return jsonify({
-            'status': 'success',
-            'images': b64_images,
-            'count': len(b64_images)
-        }), 200
+    response = {
+        'status': 'success',
+        'viewpoint_images': viewpoint_images,
+        'viewpoints': viewpoints,
+        'count': len(viewpoints) - len(failed_viewpoints)
+    }
 
-    return {'error': 'Image Generation failed'}, 500
+    if failed_viewpoints:
+        response['failed_viewpoints'] = failed_viewpoints
+
+    return jsonify(response), 200
 
 
 @api_bp.route('/optimize-prompt', methods=['POST'])
@@ -186,7 +197,7 @@ def evaluate_image():
     evaluations = []
     for img_str in images_data:
         # Mocking a score for now
-        time.sleep(3) # temp sleep to show evaluating state
+        time.sleep(1) # temp sleep to show evaluating state
         mock_score = 0.0
         evaluations.append({'score': mock_score})
 

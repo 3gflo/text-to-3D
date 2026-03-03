@@ -21,9 +21,9 @@ const Dashboard = () => {
   const [selected3DModel, setSelected3DModel] = useState("");
 
   // State management for image generation & selection
-  const [generatedImages, setGeneratedImages] = useState([]);
+  const [viewpointImages, setViewpointImages] = useState({});
+  const [viewpoints, setViewpoints] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedImageBase64, setSelectedImageBase64] = useState(null);
   const CLIP_THRESHOLD = 0.25;
 
   // 3D generation state
@@ -125,8 +125,8 @@ const Dashboard = () => {
     }
 
     setIsGenerating(true);
-    setGeneratedImages([]);
-    setSelectedImageBase64(null); // Clear previous selection
+    setViewpointImages({});
+    setViewpoints([]);
 
     try {
       const response = await fetch('/api/generate-image', {
@@ -145,48 +145,47 @@ const Dashboard = () => {
 
       const data = await response.json();
 
-      if (data.status === 'success' && data.images) {
-        // Map the backend base64 strings to the UI array format
-        const fetchedResults = data.images.map((imgStr, index) => ({
-          id: index + 1,
-          url: imgStr, // The python backend already appends "data:image/png;base64,"
-          score: "N/A", // Placeholder until backend CLIP evaluation is implemented
-          status: "EVALUATING" // Placeholder
-        }));
+      if (data.status === 'success' && data.viewpoint_images) {
+        setViewpointImages(data.viewpoint_images);
+        setViewpoints(data.viewpoints);
 
-        setGeneratedImages(fetchedResults);
+        // Evaluate the Images (CLIP Score) — flatten viewpoint images into a list
+        const imageList = data.viewpoints
+          .map(vp => data.viewpoint_images[vp])
+          .filter(img => img != null);
 
-        // Evaluate the Images (CLIP Score)
-        try {
-          const evalResponse = await fetch('/api/evaluate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              images: data.images,
-              prompt: promptToUse
-            })
-          });
+        if (imageList.length > 0) {
+          try {
+            const evalResponse = await fetch('/api/evaluate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                images: imageList,
+                prompt: promptToUse
+              })
+            });
 
-          if (evalResponse.ok) {
-            const evalData = await evalResponse.json();
-            if (evalData.status === 'success') {
-              // Update state with the new scores and categorical statuses
-              const scoredResults = fetchedResults.map((img, idx) => {
-                const score = evalData.evaluations[idx].score;
-                return {
-                  ...img,
-                  score: score,
-                  status: getClipLabel(score).toUpperCase() // Sets status to LOW, MEDIUM, or HIGH
-                };
-              });
-              setGeneratedImages(scoredResults);
+            if (evalResponse.ok) {
+              const evalData = await evalResponse.json();
+              if (evalData.status === 'success') {
+                // Store scores keyed by viewpoint
+                const scored = { ...data.viewpoint_images };
+                let scoreIdx = 0;
+                for (const vp of data.viewpoints) {
+                  if (scored[vp] != null) {
+                    scored[vp] = {
+                      url: scored[vp],
+                      score: evalData.evaluations[scoreIdx]?.score ?? "N/A"
+                    };
+                    scoreIdx++;
+                  }
+                }
+                setViewpointImages(scored);
+              }
             }
+          } catch (evalError) {
+            console.error("Evaluation failed:", evalError);
           }
-        } catch (evalError) {
-           console.error("Evaluation failed:", evalError);
-           // Fallback to N/A instead of ACCEPTED if the server errors
-           const fallbackResults = fetchedResults.map(img => ({...img, status: "N/A"}));
-           setGeneratedImages(fallbackResults);
         }
       } else {
         throw new Error("Unexpected response structure from server.");
@@ -200,8 +199,17 @@ const Dashboard = () => {
   };
 
   const handleGenerate3DAsset = async () => {
-    if (!selectedImageBase64) {
-      alert("Please generate or select an image first!");
+    // Collect images in viewpoint order (front, back, left, right)
+    const orderedImages = viewpoints
+      .map(vp => {
+        const entry = viewpointImages[vp];
+        if (!entry) return null;
+        return typeof entry === 'object' ? entry.url : entry;
+      })
+      .filter(img => img != null);
+
+    if (orderedImages.length === 0) {
+      alert("Please generate viewpoint images first!");
       return;
     }
 
@@ -215,7 +223,7 @@ const Dashboard = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          images: [selectedImageBase64],
+          images: orderedImages,
           service: selected3DModel
         }),
       });
@@ -336,7 +344,7 @@ const Dashboard = () => {
 {/*           </div> */}
 
           <div className="image-grid">
-            {generatedImages.length === 0 && !isGenerating && (
+            {viewpoints.length === 0 && !isGenerating && (
               <p style={{textAlign: 'center', width: '100%', color: '#888'}}>No images generated yet.</p>
             )}
 
@@ -344,34 +352,38 @@ const Dashboard = () => {
               <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... Please wait.</p>
             )}
 
-            {/* Dynamically Populated Image Cards */}
-            {generatedImages.map((img) => (
-              <div
-                key={img.id}
-                className="image-card"
-                onClick={() => setSelectedImageBase64(img.url)}
-                style={{
-                  cursor: 'pointer',
-                  border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
-                  boxSizing: 'border-box'
-                }}
-              >
-                <div className="image-slot">
-                  <div className={`badge ${img.status.toLowerCase()}`}>
-                    {img.status}
-                  </div>
-                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
-                  <div className="overlay-text">
-                    <div>Generated Image</div>
-                    <div>
-                      CLIP Score: {img.score !== "N/A"
-                        ? `${getClipLabel(img.score)} (${img.score})`
-                        : "N/A"}
+            {/* Viewpoint Image Cards */}
+            {viewpoints.map((vp) => {
+              const entry = viewpointImages[vp];
+              const imgUrl = entry == null ? null : (typeof entry === 'object' ? entry.url : entry);
+              const score = entry != null && typeof entry === 'object' ? entry.score : "N/A";
+              const status = score !== "N/A" ? getClipLabel(score).toUpperCase() : (imgUrl ? "EVALUATING" : "FAILED");
+
+              return (
+                <div key={vp} className="image-card" style={{ boxSizing: 'border-box' }}>
+                  <div className="image-slot">
+                    <div className={`badge ${status.toLowerCase()}`}>
+                      {vp.toUpperCase()}
+                    </div>
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={`${vp} view`} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                    ) : (
+                      <div style={{width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888'}}>
+                        Failed
+                      </div>
+                    )}
+                    <div className="overlay-text">
+                      <div>{vp.toUpperCase()} View</div>
+                      <div>
+                        CLIP Score: {score !== "N/A"
+                          ? `${getClipLabel(score)} (${score})`
+                          : "N/A"}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -397,7 +409,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D}
+            disabled={isGenerating3D || viewpoints.length === 0}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
