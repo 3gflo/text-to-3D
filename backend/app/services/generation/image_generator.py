@@ -69,8 +69,7 @@ class NanoBanana(BaseImageGenerator):
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    response_modalities=['IMAGE'],
-                    candidate_count=num_images
+                    response_modalities=['IMAGE']
                 )
             )
             images = []
