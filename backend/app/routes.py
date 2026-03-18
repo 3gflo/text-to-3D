@@ -4,7 +4,7 @@ from flask import Blueprint, request, send_file, jsonify, current_app
 from app.services.generation.threeD_generator import split_orthographic_sheet
 from io import BytesIO
 
-from backend.app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
+from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
 # Define the blueprint
 api_bp = Blueprint('api', __name__)
