@@ -1,5 +1,5 @@
 // src/components/Dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
 import '@google/model-viewer' // npm install @google/model-viewer
 
@@ -37,6 +37,10 @@ const Dashboard = () => {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [userName, setUserName] = useState(null);
 
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const fileInputRef = useRef(null);
+
   // Helper to categorize the numerical CLIP score
   const getClipLabel = (score) => {
     if (score === 0.0 || score === null || score === "N/A") return "N/A";
@@ -49,6 +53,21 @@ const Dashboard = () => {
     
     // A score of 0.29+ is exceptionally good semantic alignment for this model
     return "High";
+  };
+
+  // Handle local file upload and convert to base64
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result;
+        setUploadedImage(base64String);
+        // Automatically select the uploaded image for 3D generation
+        setSelectedImageBase64(base64String);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Fetch available models on mount for all asset types
@@ -285,10 +304,13 @@ const Dashboard = () => {
         body: JSON.stringify({
           user: userName,
           description: jobDescription,
-          input_prompt: inputPrompt,
-          text_model: selectedPromptService,
-          optimized_prompt: optimizedPrompt,
-          image_model: selectedImageModel,
+
+          // Conditionally submit prompt data based on the mode
+          input_prompt: isManualMode ? "N/A (Manual Upload)" : inputPrompt,
+          text_model: isManualMode ? "N/A" : selectedPromptService,
+          optimized_prompt: isManualMode ? "N/A" : optimizedPrompt,
+          image_model: isManualMode ? "Manual Upload" : selectedImageModel,
+
           image_1: "pending", // TODO update when we are able to show images in google sheets
           image_2: "pending",
           image_3: "pending",
@@ -331,20 +353,36 @@ const Dashboard = () => {
         <section className="column">
           <div className="column-header">INPUT: Prompt Engineering</div>
 
-          {/* Original Prompt Textarea */}
+          {/* NEW: Mode Toggle */}
+          <div className="mode-toggle">
+            <button
+              className={`toggle-btn ${!isManualMode ? 'active' : ''}`}
+              onClick={() => setIsManualMode(false)}
+              disabled={isJobLocked || isGenerating}
+            >
+              Text to Image
+            </button>
+            <button
+              className={`toggle-btn ${isManualMode ? 'active' : ''}`}
+              onClick={() => setIsManualMode(true)}
+              disabled={isJobLocked || isGenerating}
+            >
+              Manual Upload
+            </button>
+          </div>
+
           <textarea
             placeholder="A futuristic, sleek white chair with blue LED light accents"
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
-            disabled={isOptimizing || isGenerating || isJobLocked}
+            disabled={isOptimizing || isGenerating || isJobLocked || isManualMode}
           />
 
-          {/* Prompt Service Dropdown */}
           <select
             className="dropdown-btn"
             value={selectedPromptService}
             onChange={(e) => setSelectedPromptService(e.target.value)}
-            disabled={isOptimizing || isGenerating || isJobLocked}
+            disabled={isOptimizing || isGenerating || isJobLocked || isManualMode}
           >
             <option value="">Choose Text Model</option>
             {textModels.map((modelName) => (
@@ -358,7 +396,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleOptimizePrompt}
-            disabled={isOptimizing || isGenerating || isJobLocked || !inputPrompt.trim()}
+            disabled={isOptimizing || isGenerating || isJobLocked || isManualMode || !inputPrompt.trim()}
           >
             {isOptimizing ? 'Optimizing...' : 'Optimize Prompt'}
           </button>
@@ -374,7 +412,7 @@ const Dashboard = () => {
             placeholder="Optimized prompt will appear here (editable)"
             value={optimizedPrompt}
             onChange={(e) => setOptimizedPrompt(e.target.value)}
-            disabled={isGenerating || isJobLocked}
+            disabled={isGenerating || isJobLocked || isManualMode}
           />
 
           {/* Dynamic Image Model Dropdown */}
@@ -382,7 +420,7 @@ const Dashboard = () => {
             className="dropdown-btn"
             value={selectedImageModel}
             onChange={(e) => setSelectedImageModel(e.target.value)}
-            disabled={isGenerating || isJobLocked}
+            disabled={isGenerating || isJobLocked || isManualMode}
           >
             <option value="">Choose Image Model</option>
             {imageModels.map((modelName) => (
@@ -396,7 +434,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerateImages}
-            disabled={isGenerating || isJobLocked || !selectedImageModel}
+            disabled={isGenerating || isJobLocked || isManualMode || !selectedImageModel}
           >
             {isGenerating ? 'Generating Images...' : 'Generate Batch Images'}
           </button>
@@ -405,14 +443,61 @@ const Dashboard = () => {
         {/* COLUMN 2: PROCESSING */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
-          <div className="image-grid">
-            {generatedImages.length === 0 && !isGenerating && (
-              <p style={{textAlign: 'center', width: '100%', color: '#888'}}>No images generated yet.</p>
-            )}
 
-            {isGenerating && (
-              <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... Please wait.</p>
-            )}
+          {isManualMode ? (
+            /* NEW: Manual Upload UI */
+            <div className="upload-container">
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+              />
+
+              {!uploadedImage ? (
+                <button
+                  className="action-btn"
+                  style={{ width: '60%', padding: '1rem' }}
+                  onClick={() => fileInputRef.current.click()}
+                  disabled={isJobLocked}
+                >
+                  Click to Upload Image
+                </button>
+              ) : (
+                <div className="image-card" style={{ width: '80%', margin: '0 auto' }}>
+                  <div
+                    className="image-slot"
+                    style={{
+                      border: selectedImageBase64 === uploadedImage ? '3px solid #4CAF50' : 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <div className="badge n\/a" style={{ backgroundColor: '#6c757d' }}>MANUAL</div>
+                    <img src={uploadedImage} alt="Uploaded file" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+
+                    {/* Clear Button */}
+                    {!isJobLocked && (
+                      <button
+                        onClick={() => { setUploadedImage(null); setSelectedImageBase64(null); }}
+                        style={{ position: 'absolute', top: 5, right: 5, cursor: 'pointer', background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px' }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* EXISTING: Generated Image Grid */
+            <div className="image-grid">
+              {generatedImages.length === 0 && !isGenerating && (
+                <p style={{textAlign: 'center', width: '100%', color: '#888'}}>No images generated yet.</p>
+                )}
+              {isGenerating && (
+                <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... Please wait.</p>
+              )}
 
             {/* Dynamically Populated Image Cards */}
             {generatedImages.map((img) => (
@@ -444,6 +529,7 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
+          )}
         </section>
 
        {/* COLUMN 3: OUTPUT */}
