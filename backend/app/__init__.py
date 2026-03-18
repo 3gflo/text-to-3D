@@ -25,9 +25,11 @@ def create_app(config_name=None):
     from .services.google_sheets_integration.sheets_manager import MockSheetManager
 
 
-    if app.config.get('GOOGLE_SHEETS_CREDENTIALS_PATH'):
+    credentials_path = app.config.get('GOOGLE_SHEETS_CREDENTIALS_PATH')
+
+    if credentials_path and os.path.exists(credentials_path):
         app.extensions['sheet_manager'] = SheetManager(
-            credentials=app.config['GOOGLE_SHEETS_CREDENTIALS_PATH'],
+            credentials=credentials_path,
             spreadsheet_id=app.config['GOOGLE_SHEET_ID']
         )
     else:
