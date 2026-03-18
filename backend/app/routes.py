@@ -1,9 +1,10 @@
 import base64
-import time
 
 from flask import Blueprint, request, send_file, jsonify, current_app
 from app.services.generation.threeD_generator import split_orthographic_sheet
 from io import BytesIO
+
+from backend.app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
 # Define the blueprint
 api_bp = Blueprint('api', __name__)
@@ -38,15 +39,6 @@ def generate_image():
             b64_str = base64.b64encode(img_bytes).decode('utf-8')
             # Add data URI prefix
             b64_images.append(f"data:image/png;base64,{b64_str}")
-
-        sheets_manager = current_app.extensions['sheet_manager']
-        sheets_data = {
-            "Image Generator": service_choice,
-
-            # temp, need to convert bytes to image/link the file
-            "Image 1": None
-        }
-        sheets_manager.update_row(sheets_data, "Sheet1")
 
         return jsonify({
             'status': 'success',
@@ -149,15 +141,6 @@ def generate_3d_model():
         if not model_bytes:
             return {'error': 'Failed to generate 3D model'}, 500
 
-        sheets_manager = current_app.extensions['sheet_manager']
-        sheets_data = {
-            "3D Model Generator": service_choice,
-
-            # temp, need to convert bytes to 3d model/link the file
-            "Model link": "Pending implementation"
-        }
-        sheets_manager.update_row(sheets_data, "Sheet1")
-
         # Return the GLB file
         return send_file(
             BytesIO(model_bytes),
@@ -200,15 +183,66 @@ def evaluate_image():
     if not images_data or not prompt:
         return {'error': 'Images and prompt are required'}, 400
 
-    # Placeholder for the actual CLIP score module.
+    # Get the initialized CLIP service
+    scorer = current_app.extensions.get('clip_scorer')
     evaluations = []
+
     for img_str in images_data:
-        # Mocking a score for now
-        time.sleep(3) # temp sleep to show evaluating state
-        mock_score = 0.0
-        evaluations.append({'score': mock_score})
+        score = 0.0
+        
+        if scorer:
+            try:
+                # The frontend sends "data:image/png;base64,iVBORw..."
+                # We need to strip the prefix to decode the raw bytes
+                if ',' in img_str:
+                    b64_data = img_str.split(',')[1]
+                else:
+                    b64_data = img_str
+                
+                # Decode to raw image bytes
+                img_bytes = base64.b64decode(b64_data)
+                
+                # Calculate actual score
+                score = scorer.calculate_score(img_bytes, prompt)
+                
+            except Exception as e:
+                print(f"Error decoding or scoring image: {e}")
+
+        evaluations.append({'score': score})
 
     return jsonify({
         'status': 'success',
         'evaluations': evaluations
     }), 200
+
+@api_bp.route('/save-job', methods=['POST'])
+def save_job():
+    data = request.get_json()
+
+    try:
+        sheets_manager = current_app.extensions['sheet_manager']
+
+        # Consolidate all data into a single row update, gracefully handling missing data
+        sheets_data = {
+            "User": data.get('user', ''),
+            "Description": data.get('description', ''),
+            "Image Prompt": data.get('input_prompt', ''),
+            "LLM Used": data.get('text_model', ''),
+            "System Prompt": SYSTEM_INSTRUCTION,
+            "Optimized Image Prompt": data.get('optimized_prompt', ''),
+            "Image Generator": data.get('image_model', ''),
+            "Image 1": data.get('image_1', ''),
+            "Image 2": data.get('image_2', ''),
+            "Image 3": data.get('image_3', ''),
+            "Image 4": data.get('image_4', ''),
+            "3D Model Generator": data.get('three_d_model', ''),
+            "Model link": data.get('model_link', ''),
+            "Analysis": data.get('analysis', ''),
+        }
+
+        sheets_manager.update_row(sheets_data, "Sheet1")
+
+        return jsonify({'status': 'success'}), 200
+    except Exception as e:
+        print(f"Failed to save job to Sheets: {e}")
+        return {'error': 'Failed to save job to Sheets'}, 500

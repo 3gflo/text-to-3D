@@ -4,6 +4,8 @@ from .config import config
 from .services.generation.image_generator import ImageServiceRegistry
 from .services.generation.prompt_generator import PromptServiceRegistry
 from .services.generation.threeD_generator import ThreeDServiceRegistry
+from .services.quality_control.clip_scorer import ClipScorerService
+
 
 
 def create_app(config_name=None):
@@ -17,6 +19,7 @@ def create_app(config_name=None):
     app.extensions['image_registry'] = ImageServiceRegistry(app.config)
     app.extensions['prompt_registry'] = PromptServiceRegistry(app.config)
     app.extensions['3d_registry'] = ThreeDServiceRegistry(app.config)
+    app.extensions['clip_scorer'] = ClipScorerService()
 
     from .services.google_sheets_integration.sheets_manager import SheetManager
     from .services.google_sheets_integration.sheets_manager import MockSheetManager

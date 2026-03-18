@@ -29,12 +29,25 @@ const Dashboard = () => {
   // 3D generation state
   const [isGenerating3D, setIsGenerating3D] = useState(false);
   const [modelUrl, setModelUrl] = useState(null);
+  const [isJobLocked, setIsJobLocked] = useState(false);
+  const [jobAnalysis, setJobAnalysis] = useState("");
+  const [jobDescription, setJobDescription] = useState("")
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [userName, setUserName] = useState(null);
 
   // Helper to categorize the numerical CLIP score
   const getClipLabel = (score) => {
     if (score === 0.0 || score === null || score === "N/A") return "N/A";
-    if (score < 0.2) return "Low"; // arbitrary for temp use
-    if (score < 0.6) return "Medium"; // arbitrary for temp use
+    
+    // A score below 0.24 usually means the image missed the prompt entirely
+    if (score < 0.24) return "Low"; 
+    
+    // A score between 0.24 and 0.29 is average/acceptable alignment
+    if (score < 0.29) return "Medium"; 
+    
+    // A score of 0.29+ is exceptionally good semantic alignment for this model
     return "High";
   };
 
@@ -80,6 +93,14 @@ const Dashboard = () => {
     if (!inputPrompt.trim()) {
       setError("Please enter a prompt to optimize");
       return;
+    }
+
+    // Warn user and clear images if they are starting a new optimization path
+    if (generatedImages.length > 0) {
+      const confirmClear = window.confirm("Optimizing a new prompt will clear your currently generated images. Do you want to continue?");
+      if (!confirmClear) return;
+      setGeneratedImages([]);
+      setSelectedImageBase64(null);
     }
 
     setError("");
@@ -179,6 +200,16 @@ const Dashboard = () => {
                   status: getClipLabel(score).toUpperCase() // Sets status to LOW, MEDIUM, or HIGH
                 };
               });
+
+              // --- NEW SORTING LOGIC ---
+              // Sort the array in descending order (highest score first)
+              // We use a fallback to 0 in case a score somehow comes back as "N/A"
+              scoredResults.sort((a, b) => {
+                const scoreA = typeof a.score === 'number' ? a.score : 0;
+                const scoreB = typeof b.score === 'number' ? b.score : 0;
+                return scoreB - scoreA;
+              });
+              
               setGeneratedImages(scoredResults);
             }
           }
@@ -233,11 +264,55 @@ const Dashboard = () => {
       // Update state to render the model
       setModelUrl(objectUrl);
 
+      // LOCK THE UI AFTER SUCCESSFUL GENERATION
+      setIsJobLocked(true);
+
     } catch (error) {
       console.error("Failed to generate 3D model:", error);
       alert("Error generating 3D model. Check console.");
     } finally {
       setIsGenerating3D(false);
+    }
+  };
+
+  // Save job data to backend and reset the 3D portion for the next run
+  const handleSaveJob = async () => {
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/save-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: userName,
+          description: jobDescription,
+          input_prompt: inputPrompt,
+          text_model: selectedPromptService,
+          optimized_prompt: optimizedPrompt,
+          image_model: selectedImageModel,
+          image_1: "pending", // TODO update when we are able to show images in google sheets
+          image_2: "pending",
+          image_3: "pending",
+          image_4: "pending",
+          three_d_model: selected3DModel,
+          model_link: "pending", // TODO update when we decide how to populate the model in gsheet
+          analysis: jobAnalysis
+        })
+      });
+
+      if (response.ok) {
+        // Unlock and reset ONLY the 3D model/job states
+        setIsJobLocked(false);
+        setModelUrl(null);
+        setJobAnalysis("");
+        setJobDescription("");
+        setShowSaveModal(false);
+      } else {
+        alert("Failed to save job to Sheets.");
+      }
+    } catch (error) {
+      alert("Error saving job.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -261,7 +336,7 @@ const Dashboard = () => {
             placeholder="A futuristic, sleek white chair with blue LED light accents"
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
-            disabled={isOptimizing || isGenerating}
+            disabled={isOptimizing || isGenerating || isJobLocked}
           />
 
           {/* Prompt Service Dropdown */}
@@ -269,7 +344,7 @@ const Dashboard = () => {
             className="dropdown-btn"
             value={selectedPromptService}
             onChange={(e) => setSelectedPromptService(e.target.value)}
-            disabled={isOptimizing || isGenerating}
+            disabled={isOptimizing || isGenerating || isJobLocked}
           >
             <option value="">Choose Text Model</option>
             {textModels.map((modelName) => (
@@ -283,7 +358,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleOptimizePrompt}
-            disabled={isOptimizing || isGenerating || !inputPrompt.trim()}
+            disabled={isOptimizing || isGenerating || isJobLocked || !inputPrompt.trim()}
           >
             {isOptimizing ? 'Optimizing...' : 'Optimize Prompt'}
           </button>
@@ -299,7 +374,7 @@ const Dashboard = () => {
             placeholder="Optimized prompt will appear here (editable)"
             value={optimizedPrompt}
             onChange={(e) => setOptimizedPrompt(e.target.value)}
-            disabled={isGenerating}
+            disabled={isGenerating || isJobLocked}
           />
 
           {/* Dynamic Image Model Dropdown */}
@@ -307,7 +382,7 @@ const Dashboard = () => {
             className="dropdown-btn"
             value={selectedImageModel}
             onChange={(e) => setSelectedImageModel(e.target.value)}
-            disabled={isGenerating}
+            disabled={isGenerating || isJobLocked}
           >
             <option value="">Choose Image Model</option>
             {imageModels.map((modelName) => (
@@ -321,7 +396,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerateImages}
-            disabled={isGenerating || !selectedImageModel}
+            disabled={isGenerating || isJobLocked || !selectedImageModel}
           >
             {isGenerating ? 'Generating Images...' : 'Generate Batch Images'}
           </button>
@@ -330,11 +405,6 @@ const Dashboard = () => {
         {/* COLUMN 2: PROCESSING */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
-
-{/*           <div style={{fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', textAlign: 'center'}}> */}
-{/*             *Images must score a <strong>{CLIP_THRESHOLD}</strong> or higher to pass to 3D generation. */}
-{/*           </div> */}
-
           <div className="image-grid">
             {generatedImages.length === 0 && !isGenerating && (
               <p style={{textAlign: 'center', width: '100%', color: '#888'}}>No images generated yet.</p>
@@ -349,11 +419,12 @@ const Dashboard = () => {
               <div
                 key={img.id}
                 className="image-card"
-                onClick={() => setSelectedImageBase64(img.url)}
+                onClick={() => !isJobLocked && setSelectedImageBase64(img.url)}
                 style={{
-                  cursor: 'pointer',
+                  cursor: isJobLocked ? 'not-allowed' : 'pointer',
                   border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  opacity: isJobLocked && selectedImageBase64 !== img.url ? 0.5 : 1
                 }}
               >
                 <div className="image-slot">
@@ -384,6 +455,7 @@ const Dashboard = () => {
             className="dropdown-btn"
             value={selected3DModel}
             onChange={(e) => setSelected3DModel(e.target.value)}
+            disabled={isJobLocked}
           >
             <option value="">Choose 3D Generator</option>
             {threeDModels.map((modelName) => (
@@ -397,7 +469,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D}
+            disabled={isGenerating3D || isJobLocked}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
@@ -428,15 +500,88 @@ const Dashboard = () => {
               )}
           </div>
 
+        {/* DYNAMIC JOB COMPLETION / DOWNLOAD UI */}
           <div className="download-row">
-            <select className="dropdown-btn download-select">
+            <select className="dropdown-btn download-select" disabled={!modelUrl}>
               <option value="FBX">Download as FBX</option>
               <option value="obj">Download as OBJ</option>
             </select>
-            <button className="action-btn download-trigger">Download</button>
+            <button className="action-btn download-trigger" disabled={!modelUrl}>Download</button>
           </div>
+
+          {/* Save button appears below downloads when job is locked/model is ready */}
+          <button
+            className="action-btn"
+            style={{
+              backgroundColor: modelUrl ? 'var(--badge-green)' : '#6c757d',
+              width: '80%',
+              marginTop: '1rem',
+              cursor: modelUrl ? 'pointer' : 'not-allowed',
+              opacity: modelUrl ? 1 : 0.5
+            }}
+            onClick={() => setShowSaveModal(true)}
+            disabled={!modelUrl}
+          >
+            Save and start new job (only the 3D Model will be cleared)
+          </button>
+
         </section>
       </main>
+
+      {/* NEW: MODAL OVERLAY PORTION (Add right before the final closing </div>) */}
+      {showSaveModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Log Run Analysis</h3>
+
+            <label className="modal-label">User</label>
+            <input
+              type="text"
+              className="modal-input"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              disabled={isSaving}
+            />
+
+            <label className="modal-label">Brief Description of Goal</label>
+            <textarea
+              className="modal-textarea"
+              placeholder="What was the goal of this run?"
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
+              disabled={isSaving}
+            />
+
+            <label className="modal-label">Brief Analysis / Notes</label>
+            <textarea
+              className="modal-textarea"
+              placeholder="What worked well? What failed? General observations..."
+              value={jobAnalysis}
+              onChange={(e) => setJobAnalysis(e.target.value)}
+              disabled={isSaving}
+            />
+
+            <div className="modal-actions">
+              <button
+                className="action-btn"
+                style={{ backgroundColor: '#6c757d', width: 'auto' }}
+                onClick={() => setShowSaveModal(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                className="action-btn"
+                style={{ backgroundColor: 'var(--badge-green)', width: 'auto' }}
+                onClick={handleSaveJob}
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save Job & Start New Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
