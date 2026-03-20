@@ -323,3 +323,44 @@ textarea:disabled {
   margin-top: 1rem;
 }
 
+/* --- TOGGLE BUTTONS & UPLOAD UI --- */
+.mode-toggle {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 0.5rem;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--gulfstream-blue);
+  background-color: var(--bg-white);
+  color: var(--gulfstream-blue);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn.active {
+  background-color: var(--gulfstream-blue);
+  color: white;
+}
+
+.toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.upload-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-height: 250px;
+  border: 2px dashed #bbb;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.5);
+}
