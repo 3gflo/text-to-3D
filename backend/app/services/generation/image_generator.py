@@ -41,13 +41,12 @@ class Imagen(BaseImageGenerator):
         self.model_name = 'imagen-4.0-generate-001'
 
     def generate(self, prompt: str, num_images: int = 1):
-        print("Trying Imagen...")
         try:
             response = self.client.models.generate_images(
                 model='imagen-4.0-generate-001',
                 prompt=prompt,
                 config=types.GenerateImagesConfig(number_of_images=num_images)
-            )
+                )
             if response.generated_images:
                 return [img.image.image_bytes for img in response.generated_images]
         except Exception as e:
@@ -65,14 +64,12 @@ class NanoBanana(BaseImageGenerator):
         self.model_name = 'gemini-3-pro-image-preview'
 
     def generate(self, prompt: str, num_images: int = 1):
-        print("Trying NanoBanana...")
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    response_modalities=['IMAGE'],
-                    candidate_count=num_images
+                    response_modalities=['IMAGE']
                 )
             )
             images = []
@@ -94,12 +91,11 @@ class GPT_image(BaseImageGenerator):
         self.model_name = "gpt-image-1.5"
 
     def generate(self, prompt: str, num_images: int = 1):
-        print("Trying GPT-image...")
         try:
             response = self.client.images.generate(
                 model=self.model_name,
                 prompt=prompt,
-                n=num_images
+                n = num_images
                 # size and quality omitted
             )
             images = []

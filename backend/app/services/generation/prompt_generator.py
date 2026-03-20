@@ -35,7 +35,7 @@ You will construct this prompt by rigorously following a 4-layer framework:
     * **Lighting:** "bright, even, neutral studio lighting," "soft, diffused lighting," "minimal shadows." (This is critical for 3D reconstruction).
     * **Background:** "plain neutral gray background," "isolated on a white background."
     * **Quality:** "hyperrealistic CG render," "high-fidelity," "8K," "Unreal Engine 5 render."
-    * **View:** "multi-view orthographic sheet," "front, back, left, right, and top views."
+    * **View:** "4-view orthographic sheet," "front, back, left, and right viewss."
 
 ---
 **Constraint:** Respond ONLY with the generated prompt. Do not include "Here is your prompt:" or any other text.

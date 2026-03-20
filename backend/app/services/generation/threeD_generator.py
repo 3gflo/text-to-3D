@@ -1,8 +1,11 @@
 import os
 import base64
 import fal_client
-from abc import ABC, abstractmethod
 import requests
+import io
+from abc import ABC, abstractmethod
+from PIL import Image
+
 
 class ThreeDServiceRegistry:
     def __init__(self, app_config):
@@ -13,7 +16,9 @@ class ThreeDServiceRegistry:
         
         self._services = {
             "trellis": Trellis() if fal_key else Mock3DGenerator(),
+            "trellis-2": Trellis2() if fal_key else Mock3DGenerator(),
             "hunyuan": Hunyuan() if fal_key else Mock3DGenerator(),
+            "hunyuan-pro": HunyuanPro() if fal_key else Mock3DGenerator()
         }
     
     def get_service(self, service_name):
@@ -78,7 +83,39 @@ class Trellis(Base3DGenerator):
             model_url = self._extract_url(result, "Trellis")
             return self._download_file(model_url)
         except Exception as e:
-            print(f"Trellis3D Error: {str(e)[:200]}...")
+            print(f"Trellis Error: {str(e)[:200]}...")
+            return None
+
+class Trellis2(Base3DGenerator):
+    def __init__(self):
+        self.model_endpoint = "fal-ai/trellis-2"
+
+    def generate(self, images: list[bytes]) -> bytes:
+        if not images:
+            print("Trellis 2 requires at least 1 image.")
+            return None
+        
+        try:
+            # Convert all images to Data URIs
+            image_uris = [self._bytes_to_data_uri(img) for img in images]
+            
+            # The API requires 'image_url' even if 'image_urls' is present
+            arguments = {
+                "image_url": image_uris[0],    # Primary/Front view
+                "image_urls": image_uris       # All views (Front and Back)
+            }
+            
+            print(f"Calling Trellis-2 with {len(image_uris)} views...")
+            result = fal_client.subscribe(
+                self.model_endpoint,
+                arguments=arguments
+            )
+            
+            model_url = self._extract_url(result, "Trellis2")
+            return self._download_file(model_url)
+            
+        except Exception as e:
+            print(f"Trellis2 Error: {str(e)[:500]}")
             return None
 
 class Hunyuan(Base3DGenerator):
@@ -99,9 +136,15 @@ class Hunyuan(Base3DGenerator):
                 "left_image_url": self._bytes_to_data_uri(images[2])
                 
             }
-            if len(images) == 4:
+            '''
+            if len(images) > 3:
                 arguments["right_image_url"] = self._bytes_to_data_uri(images[3])
-            
+            if len(images) > 4:
+                arguments["top_image_url"] = self._bytes_to_data_uri(images[4])
+            if len(images) > 5:
+                arguments["bottom_image_url"] = self._bytes_to_data_uri(images[5])
+            '''
+                
             result = fal_client.subscribe(
                 self.model_endpoint,
                 arguments=arguments
@@ -112,8 +155,76 @@ class Hunyuan(Base3DGenerator):
         except Exception as e:
             print(f"Hunyuan3D Error: {e}")
             return None
+        
+class HunyuanPro(Base3DGenerator):
+    def __init__(self):
+        # Specific endpoint for v3.1 Pro
+        self.model_endpoint = "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d"
+
+    def generate(self, images: list[bytes]) -> bytes:
+        if not images:
+            print("Hunyuan3D Pro requires at least 1 image (Front view).")
+            return None
+
+        try:
+            # Front view is 'input_image_url'
+            arguments = {
+                "input_image_url": self._bytes_to_data_uri(images[0])
+            }
+            
+            # Map additional views if provided by the client
+            if len(images) > 1:
+                arguments["back_image_url"] = self._bytes_to_data_uri(images[1])
+            '''
+            if len(images) > 2:
+                arguments["left_image_url"] = self._bytes_to_data_uri(images[2])
+            if len(images) > 3:
+                arguments["right_image_url"] = self._bytes_to_data_uri(images[3])
+            if len(images) > 4:
+                arguments["top_image_url"] = self._bytes_to_data_uri(images[4])
+            if len(images) > 5:
+                arguments["bottom_image_url"] = self._bytes_to_data_uri(images[5])
+            '''
+            print(f"Calling Hunyuan Pro with {len(images)} views...")
+            result = fal_client.subscribe(
+                self.model_endpoint,
+                arguments=arguments
+            )
+            
+            # v3.1 Pro returns the URL in a 'model_glb' dict, which your _extract_url already handles!
+            model_url = self._extract_url(result, "HunyuanPro")
+            return self._download_file(model_url)
+            
+        except Exception as e:
+            print(f"HunyuanPro Error: {e}")
+            return None
 
 class Mock3DGenerator(Base3DGenerator):
     def generate(self, images: list[bytes]) -> bytes:
         print("Mock 3D Generator: Returning dummy GLB bytes.")
         return b"glTF" + b"\x00" * 20  # Minimum fake GLB header
+    
+
+# Helper to split ortographic sheet generated by image_generator into a list of views
+def split_orthographic_sheet(sheet_bytes: bytes) -> list[bytes]:
+    img = Image.open(io.BytesIO(sheet_bytes))
+    width, height = img.size
+    
+    mid_x = width // 2
+    mid_y = height // 2
+    
+    # Top-Left (Front) and Top-Right (Back)
+    boxes = [
+        (0, 0, mid_x, mid_y),            
+        (mid_x, 0, width, mid_y)
+    ]
+    
+    separated_images = []
+    for box in boxes:
+        # Ensures lower > upper (mid_y > 0) to prevent splitting failure
+        cropped_img = img.crop(box)
+        img_byte_arr = io.BytesIO()
+        cropped_img.save(img_byte_arr, format='PNG')
+        separated_images.append(img_byte_arr.getvalue())
+        
+    return separated_images

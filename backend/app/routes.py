@@ -1,9 +1,10 @@
 import base64
 
 from flask import Blueprint, request, send_file, jsonify, current_app
+from app.services.generation.threeD_generator import split_orthographic_sheet
 from io import BytesIO
 
-from backend.app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
+from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
 # Define the blueprint
 api_bp = Blueprint('api', __name__)
@@ -65,6 +66,20 @@ def optimize_prompt():
 
     optimized_prompt = service.generate(prompt)
     if optimized_prompt:
+        from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
+
+        # Try to log to Google Sheets, but don't fail if it errors
+        try:
+            sheets_manager = current_app.extensions['sheet_manager']
+            sheets_data = {
+                "Image Prompt": prompt,
+                "LLM Used": service_choice,
+                "Optimized Image Prompt": optimized_prompt,
+                "System Prompt": SYSTEM_INSTRUCTION,
+            }
+            sheets_manager.update_row(sheets_data, "Sheet1")
+        except Exception as e:
+            print(f"Warning: Failed to log to Google Sheets: {e}")
 
         return {
             'success': True,
@@ -103,6 +118,23 @@ def generate_3d_model():
                 img_str = img_str.split(',')[1]
             image_bytes_list.append(base64.b64decode(img_str))
 
+        if len(image_bytes_list) == 1:
+            try:
+                image_bytes_list = split_orthographic_sheet(image_bytes_list[0])
+
+                '''
+                for index, img_bytes in enumerate(image_bytes_list):
+                    filename = f"debug_split_view_{index}.png"
+                    with open(filename, "wb") as f:
+                        f.write(img_bytes)
+                    print(f"Saved debug image: {filename}")
+                '''
+
+            except Exception as e:
+                print(f"Image splitting failed: {e}")
+                return {'error': 'Failed to split image'}
+        
+        
         # Generate the model
         model_bytes = service.generate(image_bytes_list)
 
