@@ -105,21 +105,21 @@ def generate_3d_model():
                 img_str = img_str.split(',')[1]
             image_bytes_list.append(base64.b64decode(img_str))
 
-        # if len(image_bytes_list) == 1:
-        #     try:
-        #         image_bytes_list = split_orthographic_sheet(image_bytes_list[0])
-        #
-        #         '''
-        #         for index, img_bytes in enumerate(image_bytes_list):
-        #             filename = f"debug_split_view_{index}.png"
-        #             with open(filename, "wb") as f:
-        #                 f.write(img_bytes)
-        #             print(f"Saved debug image: {filename}")
-        #         '''
-        #
-        #     except Exception as e:
-        #         print(f"Image splitting failed: {e}")
-        #         return {'error': 'Failed to split image'}
+        if len(image_bytes_list) == 1:
+            try:
+                image_bytes_list = split_orthographic_sheet(image_bytes_list[0])
+
+                '''
+                for index, img_bytes in enumerate(image_bytes_list):
+                    filename = f"debug_split_view_{index}.png"
+                    with open(filename, "wb") as f:
+                        f.write(img_bytes)
+                    print(f"Saved debug image: {filename}")
+                '''
+
+            except Exception as e:
+                print(f"Image splitting failed: {e}")
+                return {'error': 'Failed to split image'}
         
         
         # Generate the model
