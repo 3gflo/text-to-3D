@@ -756,7 +756,7 @@ const Dashboard = () => {
 
             <div style={{ fontSize: '0.9rem', color: '#555', backgroundColor: '#e9ecef', padding: '10px', borderRadius: '4px', textAlign: 'center' }}>
               <strong>Want to use this prompt?</strong> <br/>
-              Copy the text above to your clipboard, close this pop-up, and click "Save and start new job" to clear the board for a fresh run.
+              Copy the text above to your clipboard, close this pop-up, and click "Save and start new job" for a fresh run.
             </div>
 
             <div className="modal-actions" style={{ justifyContent: 'center', marginTop: '1.5rem' }}>
