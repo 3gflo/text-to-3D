@@ -680,7 +680,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D || isJobLocked}
+            disabled={isGenerating3D || isJobLocked || !selectedImageBase64}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
@@ -718,13 +718,13 @@ const Dashboard = () => {
               className="action-btn"
               onClick={handleAnalyzeDiscrepancies}
               disabled={isAnalyzing || !modelUrl || !selectedImageBase64}
-              style={{ backgroundColor: 'var(--gulfstream-blue)', width: '100%', padding: '8px' }}
+              style={{ width: '100%', padding: '8px' }}
             >
               {isAnalyzing ? 'Analyzing Differences...' : 'Compare Image to 3D Model'}
             </button>
           </div>
 
-         <div className="download-row">
+         <div className="download-row" style={{ marginTop: '0.25rem', paddingBottom: '0' }}>
             <select
               className="dropdown-btn download-select"
               value={downloadFormat}
@@ -750,7 +750,7 @@ const Dashboard = () => {
             style={{
               backgroundColor: modelUrl ? 'var(--badge-green)' : '#6c757d',
               width: '100%',
-              marginTop: '0.5rem',
+              marginTop: '0.25rem',
               cursor: modelUrl ? 'pointer' : 'not-allowed',
               opacity: modelUrl ? 1 : 0.5
             }}
