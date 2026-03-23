@@ -538,6 +538,7 @@ const Dashboard = () => {
             value={optimizedPrompt}
             onChange={(e) => setOptimizedPrompt(e.target.value)}
             disabled={isGenerating || isJobLocked || isManualMode}
+            style={{ minHeight: '200px' }}
           />
 
           {/* Dynamic Image Model Dropdown */}
