@@ -600,7 +600,7 @@ const Dashboard = () => {
                     }}
                   >
                     <div className="badge n\/a" style={{ backgroundColor: '#6c757d' }}>MANUAL</div>
-                    <img src={uploadedImage} alt="Uploaded file" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                    <img src={uploadedImage} alt="Uploaded file" style={{width: '100%', height: '100%', objectFit: 'contain'}} />
 
                     {/* Clear Button */}
                     {!isJobLocked && (
