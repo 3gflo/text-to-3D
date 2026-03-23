@@ -1,3 +1,4 @@
+import zipfile
 import base64
 import json
 
@@ -201,6 +202,86 @@ def evaluate_image():
         'status': 'success',
         'evaluations': evaluations
     }), 200
+
+@api_bp.route('/convert-model', methods=['POST'])
+def convert_model():
+    if 'model_file' not in request.files:
+        return {'error': 'No file provided'}, 400
+
+    file = request.files['model_file']
+    target_format = request.form.get('format', 'obj').lower()
+
+    try:
+        file_bytes = file.read()
+        import trimesh
+        import zipfile
+        from io import BytesIO
+
+        # Load the binary GLB file into a trimesh scene
+        scene = trimesh.load(BytesIO(file_bytes), file_type='glb')
+        out_buffer = BytesIO()
+
+        if target_format == 'obj':
+            # Export the scene to OBJ
+            export_data = scene.export(file_type='obj', include_texture=True, return_texture=True)
+
+            # FIX: If trimesh returns a tuple like (obj_string, texture_dictionary)
+            if isinstance(export_data, tuple):
+                obj_content = export_data[0]
+                textures = export_data[1] if len(export_data) > 1 else {}
+
+                if isinstance(textures, dict):
+                    # Combine them so the zip logic below can handle them all at once
+                    export_data = textures
+                    export_data['generated_model.obj'] = obj_content
+                else:
+                    # Fallback to just the string if no textures exist
+                    export_data = obj_content
+
+            # Package colored models into a ZIP
+            if isinstance(export_data, dict):
+                with zipfile.ZipFile(out_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for file_name, data in export_data.items():
+                        if isinstance(data, str):
+                            zip_file.writestr(file_name, data.encode('utf-8'))
+                        else:
+                            zip_file.writestr(file_name, data)
+
+                mimetype = 'application/zip'
+                filename = 'generated_model_obj_package.zip'
+
+            # Fallback for purely uncolored geometry
+            else:
+                if isinstance(export_data, str):
+                    out_buffer.write(export_data.encode('utf-8'))
+                else:
+                    out_buffer.write(export_data)
+
+                mimetype = 'text/plain'
+                filename = 'generated_model.obj'
+
+        elif target_format == 'fbx':
+            return {'error': 'FBX is a proprietary format and requires the Autodesk SDK or Blender installed on the server. Please download as OBJ or GLB.'}, 501
+        else:
+            return {'error': 'Unsupported format'}, 400
+
+        # Reset buffer pointer to the beginning before sending
+        out_buffer.seek(0)
+
+        return send_file(
+            out_buffer,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except ImportError:
+        return {'error': 'Missing library. Please run: pip install trimesh'}, 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': f'Conversion failed: {str(e)}'}, 500
+
 
 @api_bp.route('/save-job', methods=['POST'])
 def save_job():
