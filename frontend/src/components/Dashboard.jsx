@@ -29,6 +29,8 @@ const Dashboard = () => {
   // 3D generation state
   const [isGenerating3D, setIsGenerating3D] = useState(false);
   const [modelUrl, setModelUrl] = useState(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState("obj");
   const [isJobLocked, setIsJobLocked] = useState(false);
   const [jobAnalysis, setJobAnalysis] = useState("");
   const [jobDescription, setJobDescription] = useState("")
@@ -291,6 +293,75 @@ const Dashboard = () => {
       alert("Error generating 3D model. Check console.");
     } finally {
       setIsGenerating3D(false);
+    }
+  };
+
+  // Handler for downloading the 3D model
+  const handleDownloadModel = async () => {
+    if (!modelUrl) {
+      alert("Please generate a 3D model first.");
+      return;
+    }
+    
+    setIsDownloading(true);
+    
+    try {
+      // FAST PATH: If they want the native GLB, we don't need the backend!
+      if (downloadFormat === 'glb') {
+          const link = document.createElement('a');
+          link.href = modelUrl;
+          link.download = `generated_model.glb`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setIsDownloading(false);
+          return;
+      }
+
+      // CONVERSION PATH: Send the blob to the backend for OBJ/FBX
+      // 1. Fetch the binary blob from our local model viewer
+      const localResponse = await fetch(modelUrl);
+      const blobData = await localResponse.blob();
+
+      // 2. Attach it to a form payload
+      const formData = new FormData();
+      formData.append('model_file', blobData, 'model.glb');
+      formData.append('format', downloadFormat);
+
+      // 3. Request conversion
+      const response = await fetch('/api/convert-model', {
+          method: 'POST',
+          body: formData
+      });
+
+      if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Failed to convert the model.");
+      }
+
+      // 4. Download the newly converted file
+      const convertedBlob = await response.blob();
+      const downloadUrl = URL.createObjectURL(convertedBlob);
+
+      // NEW: Check if the backend sent a ZIP package (for colored OBJs)
+      let extension = downloadFormat;
+      if (downloadFormat === 'obj' && convertedBlob.type === 'application/zip') {
+          extension = 'zip';
+      }
+      
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `generated_model.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl); // Clean up memory
+
+    } catch (error) {
+        console.error("Download error:", error);
+        alert("Error downloading model: " + error.message);
+    } finally {
+        setIsDownloading(false);
     }
   };
 
@@ -586,16 +657,30 @@ const Dashboard = () => {
               )}
           </div>
 
-        {/* DYNAMIC JOB COMPLETION / DOWNLOAD UI */}
-          <div className="download-row">
-            <select className="dropdown-btn download-select" disabled={!modelUrl}>
-              <option value="FBX">Download as FBX</option>
+        
+         
+         
+         <div className="download-row">
+            <select 
+              className="dropdown-btn download-select"
+              value={downloadFormat}
+              onChange={(e) => setDownloadFormat(e.target.value)}
+              disabled={!modelUrl || isDownloading || isGenerating3D}
+            >
+              <option value="glb">Download as GLB (Native)</option>
               <option value="obj">Download as OBJ</option>
+              <option value="fbx">Download as FBX</option>
             </select>
-            <button className="action-btn download-trigger" disabled={!modelUrl}>Download</button>
+            <button 
+              className="action-btn download-trigger"
+              onClick={handleDownloadModel}
+              disabled={!modelUrl || isDownloading || isGenerating3D}
+            >
+              {isDownloading ? "Processing..." : "Download"}
+            </button>
           </div>
 
-          {/* Save button appears below downloads when job is locked/model is ready */}
+          
           <button
             className="action-btn"
             style={{
