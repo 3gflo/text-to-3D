@@ -342,10 +342,16 @@ const Dashboard = () => {
       // 4. Download the newly converted file
       const convertedBlob = await response.blob();
       const downloadUrl = URL.createObjectURL(convertedBlob);
+
+      // NEW: Check if the backend sent a ZIP package (for colored OBJs)
+      let extension = downloadFormat;
+      if (downloadFormat === 'obj' && convertedBlob.type === 'application/zip') {
+          extension = 'zip';
+      }
       
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `generated_model.${downloadFormat}`;
+      link.download = `generated_model.${extension}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -651,16 +657,7 @@ const Dashboard = () => {
               )}
           </div>
 
-        {/* DYNAMIC JOB COMPLETION / DOWNLOAD UI */}
-          {/*<div className="download-row">
-            <select className="dropdown-btn download-select" disabled={!modelUrl}>
-              <option value="FBX">Download as FBX</option>
-              <option value="obj">Download as OBJ</option>
-            </select>
-            <button className="action-btn download-trigger" disabled={!modelUrl}>Download</button>
-          </div>
-
-          {/* Save button appears below downloads when job is locked/model is ready */}
+        
          
          
          <div className="download-row">
