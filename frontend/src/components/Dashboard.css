@@ -19,8 +19,7 @@ body {
 
 .dashboard-container {
   background-color: var(--bg-white);
-  height: 100vh; /* Fixed height */
-  overflow: hidden; /* Prevent scrolling */
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }

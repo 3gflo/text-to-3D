@@ -215,8 +215,10 @@ def split_orthographic_sheet(sheet_bytes: bytes) -> list[bytes]:
     
     # Top-Left (Front) and Top-Right (Back)
     boxes = [
-        (0, 0, mid_x, mid_y),            
-        (mid_x, 0, width, mid_y)
+        (0, 0, mid_x, mid_y),  # Top-Left (Front)
+        (mid_x, 0, width, mid_y),  # Top-Right (Back)
+        (0, mid_y, mid_x, height),  # Bottom-Left
+        (mid_x, mid_y, width, height)  # Bottom-Right
     ]
     
     separated_images = []

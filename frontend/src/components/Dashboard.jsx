@@ -43,6 +43,12 @@ const Dashboard = () => {
   const [uploadedImage, setUploadedImage] = useState(null);
   const fileInputRef = useRef(null);
 
+  const modelViewerRef = useRef(null);
+  const [discrepancyAnalysis, setDiscrepancyAnalysis] = useState("");
+  const [suggestedPrompt, setSuggestedPrompt] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+
   // Helper to categorize the numerical CLIP score
   const getClipLabel = (score) => {
     if (score === 0.0 || score === null || score === "N/A") return "N/A";
@@ -302,9 +308,9 @@ const Dashboard = () => {
       alert("Please generate a 3D model first.");
       return;
     }
-    
+
     setIsDownloading(true);
-    
+
     try {
       // FAST PATH: If they want the native GLB, we don't need the backend!
       if (downloadFormat === 'glb') {
@@ -348,7 +354,7 @@ const Dashboard = () => {
       if (downloadFormat === 'obj' && convertedBlob.type === 'application/zip') {
           extension = 'zip';
       }
-      
+
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = `generated_model.${extension}`;
@@ -406,6 +412,54 @@ const Dashboard = () => {
       alert("Error saving job.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleAnalyzeDiscrepancies = async () => {
+    if (!selectedImageBase64 || !modelUrl) {
+      alert("You need both a selected image and a generated 3D model to compare.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setDiscrepancyAnalysis("");
+    setSuggestedPrompt("");
+
+    try {
+      const viewer = modelViewerRef.current;
+      const blob = await viewer.toBlob({ idealAspect: true });
+
+      const snapshotBase64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+
+      const response = await fetch('/api/analyze-discrepancies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          original_prompt: optimizedPrompt || inputPrompt,
+          input_images: [selectedImageBase64],
+          model_snapshots: [snapshotBase64]
+        }),
+      });
+
+      if (!response.ok) throw new Error("Analysis failed");
+
+      const data = await response.json();
+      setDiscrepancyAnalysis(data.analysis);
+      setSuggestedPrompt(data.suggested_prompt);
+
+      // Auto-populate the save job modal notes
+      setJobAnalysis(`Discrepancies: ${data.analysis}`);
+      setShowAnalysisModal(true);
+
+    } catch (error) {
+      console.error("Error analyzing discrepancies:", error);
+      alert("Failed to analyze model discrepancies.");
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -626,7 +680,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D || isJobLocked}
+            disabled={isGenerating3D || isJobLocked || !selectedImageBase64}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
@@ -642,6 +696,7 @@ const Dashboard = () => {
 
               {!isGenerating3D && modelUrl && (
                 <model-viewer
+                  ref={modelViewerRef}
                   src={modelUrl}
                   auto-rotate
                   camera-controls
@@ -657,11 +712,20 @@ const Dashboard = () => {
               )}
           </div>
 
-        
-         
-         
-         <div className="download-row">
-            <select 
+          {/* VLM Comparison Section */}
+          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem' }}>
+            <button
+              className="action-btn"
+              onClick={handleAnalyzeDiscrepancies}
+              disabled={isAnalyzing || !modelUrl || !selectedImageBase64}
+              style={{ width: '100%', padding: '8px' }}
+            >
+              {isAnalyzing ? 'Analyzing Differences...' : 'Compare Image to 3D Model'}
+            </button>
+          </div>
+
+         <div className="download-row" style={{ marginTop: '0.25rem', paddingBottom: '0' }}>
+            <select
               className="dropdown-btn download-select"
               value={downloadFormat}
               onChange={(e) => setDownloadFormat(e.target.value)}
@@ -671,7 +735,7 @@ const Dashboard = () => {
               <option value="obj">Download as OBJ</option>
               <option value="fbx">Download as FBX</option>
             </select>
-            <button 
+            <button
               className="action-btn download-trigger"
               onClick={handleDownloadModel}
               disabled={!modelUrl || isDownloading || isGenerating3D}
@@ -680,13 +744,13 @@ const Dashboard = () => {
             </button>
           </div>
 
-          
+          {/* Save button */}
           <button
             className="action-btn"
             style={{
               backgroundColor: modelUrl ? 'var(--badge-green)' : '#6c757d',
-              width: '80%',
-              marginTop: '1rem',
+              width: '100%',
+              marginTop: '0.25rem',
               cursor: modelUrl ? 'pointer' : 'not-allowed',
               opacity: modelUrl ? 1 : 0.5
             }}
@@ -748,6 +812,42 @@ const Dashboard = () => {
                 disabled={isSaving}
               >
                 {isSaving ? "Saving..." : "Save Job & Start New Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+     {/* VLM ANALYSIS MODAL */}
+      {showAnalysisModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '600px' }}>
+            <h3>QA Analysis Results</h3>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <strong style={{ color: 'var(--badge-red)', display: 'block', marginBottom: '0.5rem' }}>Discrepancies Found:</strong>
+              <p style={{ margin: 0, lineHeight: '1.5', fontSize: '0.95rem' }}>{discrepancyAnalysis}</p>
+            </div>
+
+            <div style={{ marginBottom: '1rem', backgroundColor: '#f8f9fa', padding: '1rem', borderRadius: '4px', border: '1px solid #dee2e6' }}>
+              <strong style={{ color: 'var(--badge-green)', display: 'block', marginBottom: '0.5rem' }}>Suggested Optimized Prompt:</strong>
+              <p style={{ margin: 0, lineHeight: '1.5', fontStyle: 'italic', fontSize: '0.95rem', userSelect: 'all' }}>
+                {suggestedPrompt}
+              </p>
+            </div>
+
+            <div style={{ fontSize: '0.9rem', color: '#555', backgroundColor: '#e9ecef', padding: '10px', borderRadius: '4px', textAlign: 'center' }}>
+              <strong>Want to use this prompt?</strong> <br/>
+              Copy the text above to your clipboard, close this pop-up, and click "Save and start new job" for a fresh run.
+            </div>
+
+            <div className="modal-actions" style={{ justifyContent: 'center', marginTop: '1.5rem' }}>
+              <button
+                className="action-btn"
+                style={{ width: 'auto', padding: '10px 20px' }}
+                onClick={() => setShowAnalysisModal(false)}
+              >
+                Close Analysis
               </button>
             </div>
           </div>
