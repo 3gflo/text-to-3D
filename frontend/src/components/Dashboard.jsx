@@ -642,7 +642,7 @@ const Dashboard = () => {
                   <div className={`badge ${img.status.toLowerCase()}`}>
                     {img.status}
                   </div>
-                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'contain'}} />
                   <div className="overlay-text">
                     <div>Generated Image</div>
                     <div>
