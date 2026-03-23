@@ -215,6 +215,51 @@ def evaluate_image():
         'evaluations': evaluations
     }), 200
 
+@api_bp.route('/convert-model', methods=['POST'])
+def convert_model():
+    if 'model_file' not in request.files:
+        return {'error': 'No file provided'}, 400
+
+    file = request.files['model_file']
+    target_format = request.form.get('format', 'obj').lower()
+
+    try:
+        file_bytes = file.read()
+        import trimesh
+        
+        # Load the binary GLB file into a trimesh scene
+        scene = trimesh.load(BytesIO(file_bytes), file_type='glb')
+        out_buffer = BytesIO()
+
+        if target_format == 'obj':
+            # Export the scene to OBJ format
+            scene.export(file_obj=out_buffer, file_type='obj')
+            mimetype = 'text/plain'
+            filename = 'generated_model.obj'
+            
+        elif target_format == 'fbx':
+            # Graceful error for proprietary FBX
+            return {'error': 'FBX is a proprietary format and requires the Autodesk SDK or Blender installed on the server. Please download as OBJ or GLB.'}, 501
+        else:
+            return {'error': 'Unsupported format'}, 400
+
+        # Reset buffer pointer to the beginning before sending
+        out_buffer.seek(0)
+
+        return send_file(
+            out_buffer,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except ImportError:
+        return {'error': 'Missing library. Please run: pip install trimesh'}, 500
+    except Exception as e:
+        print(f"Conversion error: {e}")
+        return {'error': f'Conversion failed: {str(e)}'}, 500
+    
+
 @api_bp.route('/save-job', methods=['POST'])
 def save_job():
     data = request.get_json()
@@ -246,3 +291,5 @@ def save_job():
     except Exception as e:
         print(f"Failed to save job to Sheets: {e}")
         return {'error': 'Failed to save job to Sheets'}, 500
+    
+    
