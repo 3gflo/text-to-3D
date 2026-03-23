@@ -538,6 +538,7 @@ const Dashboard = () => {
             value={optimizedPrompt}
             onChange={(e) => setOptimizedPrompt(e.target.value)}
             disabled={isGenerating || isJobLocked || isManualMode}
+            style={{ minHeight: '200px' }}
           />
 
           {/* Dynamic Image Model Dropdown */}
@@ -599,7 +600,7 @@ const Dashboard = () => {
                     }}
                   >
                     <div className="badge n\/a" style={{ backgroundColor: '#6c757d' }}>MANUAL</div>
-                    <img src={uploadedImage} alt="Uploaded file" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                    <img src={uploadedImage} alt="Uploaded file" style={{width: '100%', height: '100%', objectFit: 'contain'}} />
 
                     {/* Clear Button */}
                     {!isJobLocked && (
@@ -641,7 +642,7 @@ const Dashboard = () => {
                   <div className={`badge ${img.status.toLowerCase()}`}>
                     {img.status}
                   </div>
-                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'contain'}} />
                   <div className="overlay-text">
                     <div>Generated Image</div>
                     <div>
