@@ -22,20 +22,23 @@ def create_app(config_name=None):
     from .services.google_sheets_integration.sheets_manager import SheetManager
     from .services.google_sheets_integration.sheets_manager import MockSheetManager
     from .services.google_sheets_integration.drive_uploader import GoogleDriveUploader
+    from .services.google_sheets_integration.drive_uploader import MockDriveUploader
 
+    creds_path = app.config.get('GOOGLE_SHEETS_CREDENTIALS_PATH')
 
-    if app.config.get('GOOGLE_SHEETS_CREDENTIALS_PATH'):
+    if creds_path and os.path.exists(creds_path):
+        print("🟢 credentials.json found. Initializing real Google APIs...")
         app.extensions['sheet_manager'] = SheetManager(
-            credentials=app.config['GOOGLE_SHEETS_CREDENTIALS_PATH'],
+            credentials=creds_path,
             spreadsheet_id=app.config['GOOGLE_SHEET_ID']
         )
         app.extensions['drive_uploader'] = GoogleDriveUploader(
-            credentials_path=app.config['GOOGLE_SHEETS_CREDENTIALS_PATH']
+            credentials_path=creds_path
         )
     else:
-        print("Using MockSheetManager (No credentials found)")
+        print("🟡 credentials.json NOT FOUND. Falling back to Mock Services.")
         app.extensions['sheet_manager'] = MockSheetManager()
-        app.extensions['drive_uploader'] = None
+        app.extensions['drive_uploader'] = MockDriveUploader()
 
     # Register the Blueprint
     from .routes import api_bp

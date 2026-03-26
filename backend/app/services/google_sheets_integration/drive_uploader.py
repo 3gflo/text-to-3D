@@ -8,6 +8,18 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
+class MockDriveUploader:
+    def __init__(self, *args, **kwargs):
+        print("🟡 MockDriveUploader initialized (Bypassing Google Drive).")
+
+    def upload_base64_image(self, b64_string: str, filename: str) -> str:
+        print(f"🟡 [MOCK] Uploading image: {filename}")
+        return "https://mock-drive-link.com/fake-image.png"
+
+    def upload_base64_file(self, b64_string: str, filename: str, mime_type: str = 'application/octet-stream') -> str:
+        print(f"🟡 [MOCK] Uploading 3D model: {filename}")
+        return "https://mock-drive-link.com/fake-model.glb"
+
 class GoogleDriveUploader:
     SCOPES = [
         'https://www.googleapis.com/auth/drive.file',

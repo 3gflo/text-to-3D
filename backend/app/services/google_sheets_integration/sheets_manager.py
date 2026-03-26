@@ -6,9 +6,20 @@ from app.services.google_sheets_integration.sheets_client import GoogleSheetsCli
 
 class MockSheetManager:
     def __init__(self, *args, **kwargs):
-        pass
+        print("MockSheetManager initialized (Bypassing Google Sheets).")
+        
+    def add_entry(self, data_dict, sheet_name="Sheet1"):
+        print(f"[MOCK] Saving Job to Sheets -> Sheet: {sheet_name}")
+        print(f"[MOCK] Job Data: User={data_dict.get('User')}, Model={data_dict.get('3D Model Generator')}")
+        raise Exception("Mock services are active. Actual upload was bypassed.")
+
     def update_row(self, data, sheet_name):
-        print(f"MockSheetManager: Skipping write for {sheet_name}")
+        print(f"[MOCK] Skipping row update for {sheet_name}")
+        return True
+        
+    def get_headers(self, sheet_name):
+        print(f"[MOCK] Getting headers for {sheet_name}")
+        return []
 
 class SheetManager:
     _instance = None
