@@ -3,6 +3,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
 import '@google/model-viewer' // npm install @google/model-viewer
 
+// Helper function to convert Blob to Base64
+const blobToBase64 = (blob) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
 const Dashboard = () => {
   // State management for prompt optimization
   const [inputPrompt, setInputPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
@@ -228,9 +238,7 @@ const Dashboard = () => {
                 };
               });
 
-              // --- NEW SORTING LOGIC ---
               // Sort the array in descending order (highest score first)
-              // We use a fallback to 0 in case a score somehow comes back as "N/A"
               scoredResults.sort((a, b) => {
                 const scoreA = typeof a.score === 'number' ? a.score : 0;
                 const scoreB = typeof b.score === 'number' ? b.score : 0;
@@ -312,7 +320,7 @@ const Dashboard = () => {
     setIsDownloading(true);
 
     try {
-      // FAST PATH: If they want the native GLB, we don't need the backend!
+      // FAST PATH: If user wants GLB, don't use backend
       if (downloadFormat === 'glb') {
           const link = document.createElement('a');
           link.href = modelUrl;
@@ -324,17 +332,16 @@ const Dashboard = () => {
           return;
       }
 
-      // CONVERSION PATH: Send the blob to the backend for OBJ/FBX
-      // 1. Fetch the binary blob from our local model viewer
+      // Fetch the binary blob from our local model viewer
       const localResponse = await fetch(modelUrl);
       const blobData = await localResponse.blob();
 
-      // 2. Attach it to a form payload
+      // Attach it to a form payload
       const formData = new FormData();
       formData.append('model_file', blobData, 'model.glb');
       formData.append('format', downloadFormat);
 
-      // 3. Request conversion
+      // Request conversion
       const response = await fetch('/api/convert-model', {
           method: 'POST',
           body: formData
@@ -345,11 +352,11 @@ const Dashboard = () => {
           throw new Error(errorData.error || "Failed to convert the model.");
       }
 
-      // 4. Download the newly converted file
+      // Download the newly converted file
       const convertedBlob = await response.blob();
       const downloadUrl = URL.createObjectURL(convertedBlob);
 
-      // NEW: Check if the backend sent a ZIP package (for colored OBJs)
+      // Check if the backend sent a ZIP package (for colored OBJs)
       let extension = downloadFormat;
       if (downloadFormat === 'obj' && convertedBlob.type === 'application/zip') {
           extension = 'zip';
@@ -375,27 +382,39 @@ const Dashboard = () => {
   const handleSaveJob = async () => {
     setIsSaving(true);
     try {
+      // Fetch the blob from the model viewer URL and convert to base64
+      let base64ModelData = null;
+      if (modelUrl && modelUrl.startsWith('blob:')) {
+        const response = await fetch(modelUrl);
+        const modelBlob = await response.blob();
+        base64ModelData = await blobToBase64(modelBlob);
+      }
+
+      // Build the payload with the base64 model string included
+      const payload = {
+        user: userName,
+        description: jobDescription,
+        input_prompt: isManualMode ? "N/A (Manual Upload)" : inputPrompt,
+        text_model: isManualMode ? "N/A" : selectedPromptService,
+        optimized_prompt: isManualMode ? "N/A" : optimizedPrompt,
+        image_model: isManualMode ? "Manual Upload" : selectedImageModel,
+        
+        // Pass the full selected/uploaded image to image_3 so the backend can grab and split it
+        image_1: isManualMode ? uploadedImage : (generatedImages[0]?.url || ""),
+        image_2: isManualMode ? "" : (generatedImages[1]?.url || ""),
+        image_3: isManualMode ? uploadedImage : selectedImageBase64,
+        image_4: isManualMode ? "" : (generatedImages[3]?.url || ""),
+        
+        three_d_model: selected3DModel,
+        model_link: "pending", 
+        model_data: base64ModelData,
+        analysis: jobAnalysis
+      };
+
       const response = await fetch('/api/save-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user: userName,
-          description: jobDescription,
-
-          // Conditionally submit prompt data based on the mode
-          input_prompt: isManualMode ? "N/A (Manual Upload)" : inputPrompt,
-          text_model: isManualMode ? "N/A" : selectedPromptService,
-          optimized_prompt: isManualMode ? "N/A" : optimizedPrompt,
-          image_model: isManualMode ? "Manual Upload" : selectedImageModel,
-
-          image_1: "pending", // TODO update when we are able to show images in google sheets
-          image_2: "pending",
-          image_3: "pending",
-          image_4: "pending",
-          three_d_model: selected3DModel,
-          model_link: "pending", // TODO update when we decide how to populate the model in gsheet
-          analysis: jobAnalysis
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
@@ -405,6 +424,7 @@ const Dashboard = () => {
         setJobAnalysis("");
         setJobDescription("");
         setShowSaveModal(false);
+        alert("Job successfully saved and synced to Google Sheets/Drive!");
       } else {
         alert("Failed to save job to Sheets.");
       }
@@ -478,7 +498,7 @@ const Dashboard = () => {
         <section className="column">
           <div className="column-header">INPUT: Prompt Engineering</div>
 
-          {/* NEW: Mode Toggle */}
+          {/* Mode Toggle */}
           <div className="mode-toggle">
             <button
               className={`toggle-btn ${!isManualMode ? 'active' : ''}`}
@@ -571,7 +591,7 @@ const Dashboard = () => {
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
 
           {isManualMode ? (
-            /* NEW: Manual Upload UI */
+            /* Manual Upload UI */
             <div className="upload-container">
               <input
                 type="file"
@@ -616,7 +636,7 @@ const Dashboard = () => {
               )}
             </div>
           ) : (
-            /* EXISTING: Generated Image Grid */
+            /* Generated Image Grid */
             <div className="image-grid">
               {generatedImages.length === 0 && !isGenerating && (
                 <p style={{textAlign: 'center', width: '100%', color: '#888'}}>No images generated yet.</p>
@@ -764,7 +784,7 @@ const Dashboard = () => {
         </section>
       </main>
 
-      {/* NEW: MODAL OVERLAY PORTION (Add right before the final closing </div>) */}
+      {/* MODAL OVERLAY PORTION (Add right before the final closing </div>) */}
       {showSaveModal && (
         <div className="modal-overlay">
           <div className="modal-content">

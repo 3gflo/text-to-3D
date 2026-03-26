@@ -191,7 +191,7 @@ class HunyuanPro(Base3DGenerator):
                 arguments=arguments
             )
             
-            # v3.1 Pro returns the URL in a 'model_glb' dict, which your _extract_url already handles!
+            # v3.1 Pro returns the URL in a 'model_glb' dict
             model_url = self._extract_url(result, "HunyuanPro")
             return self._download_file(model_url)
             

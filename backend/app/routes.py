@@ -1,6 +1,7 @@
 import zipfile
 import base64
 import json
+import uuid
 
 from flask import Blueprint, request, send_file, jsonify, current_app
 from app.services.generation.threeD_generator import split_orthographic_sheet
@@ -158,7 +159,6 @@ def available_models():
 
     services = list(registry.get_services().keys())
 
-
     return jsonify({'services': services}), 200
 
 
@@ -180,8 +180,7 @@ def evaluate_image():
         
         if scorer:
             try:
-                # The frontend sends "data:image/png;base64,iVBORw..."
-                # We need to strip the prefix to decode the raw bytes
+                # Strip the prefix to decode the raw bytes
                 if ',' in img_str:
                     b64_data = img_str.split(',')[1]
                 else:
@@ -225,7 +224,7 @@ def convert_model():
             # Export the scene to OBJ
             export_data = scene.export(file_type='obj', include_texture=True, return_texture=True)
 
-            # FIX: If trimesh returns a tuple like (obj_string, texture_dictionary)
+            # If trimesh returns a tuple like (obj_string, texture_dictionary)
             if isinstance(export_data, tuple):
                 obj_content = export_data[0]
                 textures = export_data[1] if len(export_data) > 1 else {}
@@ -289,8 +288,84 @@ def save_job():
 
     try:
         sheets_manager = current_app.extensions['sheet_manager']
+        uploader = current_app.extensions['drive_uploader']
 
-        # Consolidate all data into a single row update, gracefully handling missing data
+        # Helper to handle text statuses ("pending", etc) without crashing
+        def process_text_status(val):
+            if val in ["pending", "Pending"]:
+                return "Still generating..."
+            if len(str(val)) > 1000:
+                return "Image data too large for Sheets"
+            return val
+
+        # Grab the full grid image. 
+        raw_image_data = data.get('image_3')
+        if not raw_image_data or not str(raw_image_data).startswith('data:image'):
+            raw_image_data = data.get('image_1', '')
+            
+        # Initialize 4 sheet columns
+        sheet_images = ["", "", "", ""]
+
+        # If valid image, split it and upload
+        if raw_image_data and str(raw_image_data).startswith('data:image'):
+            # Strip the "data:image/png;base64," prefix
+            b64_str = raw_image_data.split(',')[1] if ',' in raw_image_data else raw_image_data
+            
+            try:
+                # Decode base64 to raw bytes
+                img_bytes = base64.b64decode(b64_str)
+                
+                split_images_bytes = split_orthographic_sheet(img_bytes)
+                
+                for i, quadrant_bytes in enumerate(split_images_bytes):
+                    if uploader:
+                        # Convert bytes back to base64 for the Drive Uploader
+                        quadrant_b64 = base64.b64encode(quadrant_bytes).decode('utf-8')
+                        filename = f"generated_img_{uuid.uuid4().hex[:8]}_quadrant_{i+1}.png"
+                        
+                        url = uploader.upload_base64_image(quadrant_b64, filename)
+                        if url:
+                            raw_image_url = url.replace('export=view', 'export=download')
+                            
+                            # Wraps the IMAGE formula in a HYPERLINK formula
+                            sheet_images[i] = f'=HYPERLINK("{url}", IMAGE("{raw_image_url}"))'
+                        else:
+                            sheet_images[i] = "Drive Upload Failed"
+            except Exception as e:
+                print(f"Error splitting/uploading images: {e}")
+                sheet_images = ["Split Failed"] * 4
+        else:
+            status = process_text_status(raw_image_data)
+            sheet_images = [status] * 4
+            
+        # 3D MODEL UPLOAD
+        raw_model_data = data.get('model_data')
+        model_link_for_sheet = data.get('model_link', '')
+
+        if raw_model_data and str(raw_model_data).startswith('data:'):
+            try:
+                # Dynamically pull the mime type if it exists in the data URI (e.g., data:model/gltf-binary;base64,...)
+                mime_type = 'application/octet-stream'
+                if ';' in raw_model_data:
+                    mime_type = raw_model_data.split(';')[0].replace('data:', '')
+
+                # Give it a unique name
+                ext = '.glb' if 'gltf' in mime_type or 'glb' in mime_type else '.obj'
+                model_filename = f"model_{uuid.uuid4().hex[:8]}{ext}"
+
+                # Upload to Drive
+                if uploader:
+                    model_drive_url = uploader.upload_base64_file(raw_model_data, model_filename, mime_type)
+                    if model_drive_url:
+                        # Make a link in the Google Sheet
+                        model_link_for_sheet = f'=HYPERLINK("{model_drive_url}", "View 3D Model")'
+                    else:
+                        model_link_for_sheet = "Upload Failed"
+            except Exception as e:
+                print(f"Error uploading 3D model: {e}")
+                model_link_for_sheet = "Upload Failed"
+        # ----------------------------------
+
         sheets_data = {
             "User": data.get('user', ''),
             "Description": data.get('description', ''),
@@ -299,18 +374,19 @@ def save_job():
             "System Prompt": SYSTEM_INSTRUCTION,
             "Optimized Image Prompt": data.get('optimized_prompt', ''),
             "Image Generator": data.get('image_model', ''),
-            "Image 1": data.get('image_1', ''),
-            "Image 2": data.get('image_2', ''),
-            "Image 3": data.get('image_3', ''),
-            "Image 4": data.get('image_4', ''),
+            "Image 1": sheet_images[0],
+            "Image 2": sheet_images[1],
+            "Image 3": sheet_images[2],
+            "Image 4": sheet_images[3],
             "3D Model Generator": data.get('three_d_model', ''),
-            "Model link": data.get('model_link', ''),
+            "Model link": model_link_for_sheet,
             "Analysis": data.get('analysis', ''),
         }
 
-        sheets_manager.update_row(sheets_data, "Sheet1")
+        sheets_manager.add_entry(sheets_data, "Sheet1")
 
         return jsonify({'status': 'success'}), 200
+        
     except Exception as e:
         print(f"Failed to save job to Sheets: {e}")
         return {'error': 'Failed to save job to Sheets'}, 500
