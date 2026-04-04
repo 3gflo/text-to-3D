@@ -1,8 +1,21 @@
-// src/components/Dashboard.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
-import '@google/model-viewer' // npm install @google/model-viewer
+import '@google/model-viewer';
 
+/**
+ * CLIP score thresholds for categorizing image-prompt alignment quality.
+ * Scores below 0.24 are typically poor alignment; 0.29+ is strong alignment.
+ */
+const CLIP_THRESHOLD = 0.25;
+
+/**
+ * Main application dashboard. Manages the full text-to-3D generation workflow:
+ *   1. Prompt optimization via LLM
+ *   2. Batch image generation with CLIP quality scoring
+ *   3. 3D model generation from a selected image
+ *   4. Discrepancy analysis comparing the 2D concept to the 3D output
+ *   5. Job logging to Google Sheets
+ */
 const Dashboard = () => {
   // State management for prompt optimization
   const [inputPrompt, setInputPrompt] = useState("A futuristic, sleek white chair with blue LED light accents");
@@ -24,7 +37,6 @@ const Dashboard = () => {
   const [generatedImages, setGeneratedImages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedImageBase64, setSelectedImageBase64] = useState(null);
-  const CLIP_THRESHOLD = 0.25;
 
   // 3D generation state
   const [isGenerating3D, setIsGenerating3D] = useState(false);
@@ -33,7 +45,7 @@ const Dashboard = () => {
   const [downloadFormat, setDownloadFormat] = useState("obj");
   const [isJobLocked, setIsJobLocked] = useState(false);
   const [jobAnalysis, setJobAnalysis] = useState("");
-  const [jobDescription, setJobDescription] = useState("")
+  const [jobDescription, setJobDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -49,21 +61,26 @@ const Dashboard = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
-  // Helper to categorize the numerical CLIP score
+  /**
+   * Map a numeric CLIP score to a human-readable quality label.
+   * Thresholds are calibrated for the CLIP ViT-B/32 model.
+   *
+   * @param {number|string|null} score
+   * @returns {"N/A"|"Low"|"Medium"|"High"}
+   */
   const getClipLabel = (score) => {
     if (score === 0.0 || score === null || score === "N/A") return "N/A";
-    
-    // A score below 0.24 usually means the image missed the prompt entirely
-    if (score < 0.24) return "Low"; 
-    
-    // A score between 0.24 and 0.29 is average/acceptable alignment
-    if (score < 0.29) return "Medium"; 
-    
-    // A score of 0.29+ is exceptionally good semantic alignment for this model
+    if (score < 0.24) return "Low";
+    if (score < 0.29) return "Medium";
     return "High";
   };
 
-  // Handle local file upload and convert to base64
+  /**
+   * Read a user-selected image file and store it as a base64 data URI.
+   * Also auto-selects the image for 3D generation.
+   *
+   * @param {React.ChangeEvent<HTMLInputElement>} event
+   */
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -71,14 +88,13 @@ const Dashboard = () => {
       reader.onloadend = () => {
         const base64String = reader.result;
         setUploadedImage(base64String);
-        // Automatically select the uploaded image for 3D generation
         setSelectedImageBase64(base64String);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Fetch available models on mount for all asset types
+  // Fetch the available model names for each pipeline stage on mount
   useEffect(() => {
     const fetchAvailableModels = async () => {
       const assetTypes = ['text', 'image', '3D'];
@@ -99,15 +115,13 @@ const Dashboard = () => {
 
           if (response.ok) {
             const data = await response.json();
-            console.log(data)
             const fetchedModels = data.services || [];
-
             stateSetters[type].setList(fetchedModels);
           } else {
             throw new Error(`Backend not ready for ${type}`);
           }
         } catch (error) {
-          console.warn(`Backend unavailable for ${type} with error ${error}`);
+          console.warn(`Could not fetch models for type '${type}': ${error}`);
         }
       }
     };
@@ -115,14 +129,16 @@ const Dashboard = () => {
     fetchAvailableModels();
   }, []);
 
-  // Handler for optimizing prompt via backend API
+  /**
+   * Send the input prompt to the selected LLM service for optimization.
+   * Warns the user if generated images will be cleared as a side effect.
+   */
   const handleOptimizePrompt = async () => {
     if (!inputPrompt.trim()) {
       setError("Please enter a prompt to optimize");
       return;
     }
 
-    // Warn user and clear images if they are starting a new optimization path
     if (generatedImages.length > 0) {
       const confirmClear = window.confirm("Optimizing a new prompt will clear your currently generated images. Do you want to continue?");
       if (!confirmClear) return;
@@ -151,14 +167,17 @@ const Dashboard = () => {
       const data = await response.json();
       setOptimizedPrompt(data.optimized_prompt);
     } catch (err) {
-      console.error('Error optimizing prompt:', err);
+      console.error('Prompt optimization error:', err);
       setError(err.message || 'Failed to optimize prompt. Please try again.');
     } finally {
       setIsOptimizing(false);
     }
   };
 
-  // Handler for Image Generation fetching from Backend
+  /**
+   * Generate a batch of 3 images from the current prompt using the selected image model.
+   * Scores each image with CLIP and sorts the results by score descending.
+   */
   const handleGenerateImages = async () => {
     if (!selectedImageModel || selectedImageModel === "Choose Image Model") {
       alert("Please select an image model from the dropdown first.");
@@ -174,7 +193,7 @@ const Dashboard = () => {
 
     setIsGenerating(true);
     setGeneratedImages([]);
-    setSelectedImageBase64(null); // Clear previous selection
+    setSelectedImageBase64(null);
 
     try {
       const response = await fetch('/api/generate-image', {
@@ -194,69 +213,64 @@ const Dashboard = () => {
       const data = await response.json();
 
       if (data.status === 'success' && data.images) {
-        // Map the backend base64 strings to the UI array format
         const fetchedResults = data.images.map((imgStr, index) => ({
           id: index + 1,
-          url: imgStr, // The python backend already appends "data:image/png;base64,"
-          score: "N/A", // Placeholder until backend CLIP evaluation is implemented
-          status: "EVALUATING" // Placeholder
+          url: imgStr,
+          score: "N/A",
+          status: "EVALUATING"
         }));
 
         setGeneratedImages(fetchedResults);
 
-        // Evaluate the Images (CLIP Score)
+        // CLIP evaluation pass
         try {
           const evalResponse = await fetch('/api/evaluate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              images: data.images,
-              prompt: promptToUse
-            })
+            body: JSON.stringify({ images: data.images, prompt: promptToUse })
           });
 
           if (evalResponse.ok) {
             const evalData = await evalResponse.json();
             if (evalData.status === 'success') {
-              // Update state with the new scores and categorical statuses
               const scoredResults = fetchedResults.map((img, idx) => {
                 const score = evalData.evaluations[idx].score;
                 return {
                   ...img,
-                  score: score,
-                  status: getClipLabel(score).toUpperCase() // Sets status to LOW, MEDIUM, or HIGH
+                  score,
+                  status: getClipLabel(score).toUpperCase()
                 };
               });
 
-              // --- NEW SORTING LOGIC ---
-              // Sort the array in descending order (highest score first)
-              // We use a fallback to 0 in case a score somehow comes back as "N/A"
+              // Sort by CLIP score descending so the best image appears first
               scoredResults.sort((a, b) => {
                 const scoreA = typeof a.score === 'number' ? a.score : 0;
                 const scoreB = typeof b.score === 'number' ? b.score : 0;
                 return scoreB - scoreA;
               });
-              
+
               setGeneratedImages(scoredResults);
             }
           }
         } catch (evalError) {
-           console.error("Evaluation failed:", evalError);
-           // Fallback to N/A instead of ACCEPTED if the server errors
-           const fallbackResults = fetchedResults.map(img => ({...img, status: "N/A"}));
-           setGeneratedImages(fallbackResults);
+          console.error("CLIP evaluation failed:", evalError);
+          setGeneratedImages(fetchedResults.map(img => ({ ...img, status: "N/A" })));
         }
       } else {
         throw new Error("Unexpected response structure from server.");
       }
     } catch (error) {
-      console.error("Error generating images:", error);
+      console.error("Image generation error:", error);
       alert(error.message || "Failed to generate images. Check console.");
     } finally {
       setIsGenerating(false);
     }
   };
 
+  /**
+   * Send the selected image to the 3D generation service and load the returned GLB
+   * into the model viewer. Locks the job controls after a successful generation.
+   */
   const handleGenerate3DAsset = async () => {
     if (!selectedImageBase64) {
       alert("Please generate or select an image first!");
@@ -264,14 +278,12 @@ const Dashboard = () => {
     }
 
     setIsGenerating3D(true);
-    setModelUrl(null); // Clear the viewer before starting
+    setModelUrl(null);
 
     try {
       const response = await fetch('/api/generate-3d-model', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images: [selectedImageBase64],
           service: selected3DModel
@@ -279,30 +291,27 @@ const Dashboard = () => {
       });
 
       if (!response.ok) {
-        // Attempt to parse the backend error message if available
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
-      // Convert the returned binary to a local blob URL
       const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-
-      // Update state to render the model
-      setModelUrl(objectUrl);
-
-      // LOCK THE UI AFTER SUCCESSFUL GENERATION
+      setModelUrl(URL.createObjectURL(blob));
       setIsJobLocked(true);
 
     } catch (error) {
-      console.error("Failed to generate 3D model:", error);
+      console.error("3D generation error:", error);
       alert("Error generating 3D model. Check console.");
     } finally {
       setIsGenerating3D(false);
     }
   };
 
-  // Handler for downloading the 3D model
+  /**
+   * Download the generated model in the selected format.
+   * GLB is served directly from the local blob URL. OBJ conversion goes through the backend,
+   * which may return a ZIP archive when textures are included.
+   */
   const handleDownloadModel = async () => {
     if (!modelUrl) {
       alert("Please generate a 3D model first.");
@@ -312,48 +321,42 @@ const Dashboard = () => {
     setIsDownloading(true);
 
     try {
-      // FAST PATH: If they want the native GLB, we don't need the backend!
       if (downloadFormat === 'glb') {
-          const link = document.createElement('a');
-          link.href = modelUrl;
-          link.download = `generated_model.glb`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setIsDownloading(false);
-          return;
+        const link = document.createElement('a');
+        link.href = modelUrl;
+        link.download = `generated_model.glb`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setIsDownloading(false);
+        return;
       }
 
-      // CONVERSION PATH: Send the blob to the backend for OBJ/FBX
-      // 1. Fetch the binary blob from our local model viewer
+      // Send the blob to the backend for format conversion
       const localResponse = await fetch(modelUrl);
       const blobData = await localResponse.blob();
 
-      // 2. Attach it to a form payload
       const formData = new FormData();
       formData.append('model_file', blobData, 'model.glb');
       formData.append('format', downloadFormat);
 
-      // 3. Request conversion
       const response = await fetch('/api/convert-model', {
-          method: 'POST',
-          body: formData
+        method: 'POST',
+        body: formData
       });
 
       if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Failed to convert the model.");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to convert the model.");
       }
 
-      // 4. Download the newly converted file
       const convertedBlob = await response.blob();
       const downloadUrl = URL.createObjectURL(convertedBlob);
 
-      // NEW: Check if the backend sent a ZIP package (for colored OBJs)
-      let extension = downloadFormat;
-      if (downloadFormat === 'obj' && convertedBlob.type === 'application/zip') {
-          extension = 'zip';
-      }
+      // OBJ exports with textures come back as a ZIP archive
+      const extension = (downloadFormat === 'obj' && convertedBlob.type === 'application/zip')
+        ? 'zip'
+        : downloadFormat;
 
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -361,17 +364,20 @@ const Dashboard = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(downloadUrl); // Clean up memory
+      URL.revokeObjectURL(downloadUrl);
 
     } catch (error) {
-        console.error("Download error:", error);
-        alert("Error downloading model: " + error.message);
+      console.error("Download error:", error);
+      alert("Error downloading model: " + error.message);
     } finally {
-        setIsDownloading(false);
+      setIsDownloading(false);
     }
   };
 
-  // Save job data to backend and reset the 3D portion for the next run
+  /**
+   * Save the current job to Google Sheets, then reset the 3D model state
+   * so the user can start a new generation run with the same prompt.
+   */
   const handleSaveJob = async () => {
     setIsSaving(true);
     try {
@@ -381,25 +387,21 @@ const Dashboard = () => {
         body: JSON.stringify({
           user: userName,
           description: jobDescription,
-
-          // Conditionally submit prompt data based on the mode
           input_prompt: isManualMode ? "N/A (Manual Upload)" : inputPrompt,
           text_model: isManualMode ? "N/A" : selectedPromptService,
           optimized_prompt: isManualMode ? "N/A" : optimizedPrompt,
           image_model: isManualMode ? "Manual Upload" : selectedImageModel,
-
-          image_1: "pending", // TODO update when we are able to show images in google sheets
+          image_1: "pending", // TODO: populate with image URLs when Sheets image embedding is supported
           image_2: "pending",
           image_3: "pending",
           image_4: "pending",
           three_d_model: selected3DModel,
-          model_link: "pending", // TODO update when we decide how to populate the model in gsheet
+          model_link: "pending", // TODO: populate when model storage is configured
           analysis: jobAnalysis
         })
       });
 
       if (response.ok) {
-        // Unlock and reset ONLY the 3D model/job states
         setIsJobLocked(false);
         setModelUrl(null);
         setJobAnalysis("");
@@ -415,6 +417,10 @@ const Dashboard = () => {
     }
   };
 
+  /**
+   * Capture a snapshot of the model viewer and send it alongside the 2D concept image
+   * to Gemini for discrepancy analysis. Populates the analysis modal with results.
+   */
   const handleAnalyzeDiscrepancies = async () => {
     if (!selectedImageBase64 || !modelUrl) {
       alert("You need both a selected image and a generated 3D model to compare.");
@@ -450,13 +456,11 @@ const Dashboard = () => {
       const data = await response.json();
       setDiscrepancyAnalysis(data.analysis);
       setSuggestedPrompt(data.suggested_prompt);
-
-      // Auto-populate the save job modal notes
       setJobAnalysis(`Discrepancies: ${data.analysis}`);
       setShowAnalysisModal(true);
 
     } catch (error) {
-      console.error("Error analyzing discrepancies:", error);
+      console.error("Discrepancy analysis error:", error);
       alert("Failed to analyze model discrepancies.");
     } finally {
       setIsAnalyzing(false);
@@ -465,20 +469,17 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-container">
-      {/* Header */}
       <header className="header">
         <h1>Gulfstream Text to 3D Model Generator</h1>
         <h2>Dashboard</h2>
       </header>
 
-      {/* Main Content Area */}
       <main className="main-content">
 
-        {/* COLUMN 1: INPUT */}
+        {/* ── COLUMN 1: PROMPT ENGINEERING ── */}
         <section className="column">
           <div className="column-header">INPUT: Prompt Engineering</div>
 
-          {/* NEW: Mode Toggle */}
           <div className="mode-toggle">
             <button
               className={`toggle-btn ${!isManualMode ? 'active' : ''}`}
@@ -511,13 +512,10 @@ const Dashboard = () => {
           >
             <option value="">Choose Text Model</option>
             {textModels.map((modelName) => (
-              <option key={modelName} value={modelName}>
-                {modelName}
-              </option>
+              <option key={modelName} value={modelName}>{modelName}</option>
             ))}
           </select>
 
-          {/* Optimize Prompt Button */}
           <button
             className="action-btn"
             onClick={handleOptimizePrompt}
@@ -532,7 +530,6 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Optimized Prompt Output (Editable) */}
           <textarea
             placeholder="Optimized prompt will appear here (editable)"
             value={optimizedPrompt}
@@ -541,7 +538,6 @@ const Dashboard = () => {
             style={{ minHeight: '200px' }}
           />
 
-          {/* Dynamic Image Model Dropdown */}
           <select
             className="dropdown-btn"
             value={selectedImageModel}
@@ -550,13 +546,10 @@ const Dashboard = () => {
           >
             <option value="">Choose Image Model</option>
             {imageModels.map((modelName) => (
-              <option key={modelName} value={modelName}>
-                {modelName}
-              </option>
+              <option key={modelName} value={modelName}>{modelName}</option>
             ))}
           </select>
 
-          {/* Generate Batch Images Button */}
           <button
             className="action-btn"
             onClick={handleGenerateImages}
@@ -566,12 +559,11 @@ const Dashboard = () => {
           </button>
         </section>
 
-        {/* COLUMN 2: PROCESSING */}
+        {/* ── COLUMN 2: QUALITY CONTROL ── */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
 
           {isManualMode ? (
-            /* NEW: Manual Upload UI */
             <div className="upload-container">
               <input
                 type="file"
@@ -600,9 +592,8 @@ const Dashboard = () => {
                     }}
                   >
                     <div className="badge n\/a" style={{ backgroundColor: '#6c757d' }}>MANUAL</div>
-                    <img src={uploadedImage} alt="Uploaded file" style={{width: '100%', height: '100%', objectFit: 'contain'}} />
+                    <img src={uploadedImage} alt="Uploaded file" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
 
-                    {/* Clear Button */}
                     {!isJobLocked && (
                       <button
                         onClick={() => { setUploadedImage(null); setSelectedImageBase64(null); }}
@@ -616,53 +607,50 @@ const Dashboard = () => {
               )}
             </div>
           ) : (
-            /* EXISTING: Generated Image Grid */
             <div className="image-grid">
               {generatedImages.length === 0 && !isGenerating && (
-                <p style={{textAlign: 'center', width: '100%', color: '#888'}}>No images generated yet.</p>
-                )}
+                <p style={{ textAlign: 'center', width: '100%', color: '#888' }}>No images generated yet.</p>
+              )}
               {isGenerating && (
-                <p style={{textAlign: 'center', width: '100%', color: '#888'}}>Running pipeline... Please wait.</p>
+                <p style={{ textAlign: 'center', width: '100%', color: '#888' }}>Running pipeline... Please wait.</p>
               )}
 
-            {/* Dynamically Populated Image Cards */}
-            {generatedImages.map((img) => (
-              <div
-                key={img.id}
-                className="image-card"
-                onClick={() => !isJobLocked && setSelectedImageBase64(img.url)}
-                style={{
-                  cursor: isJobLocked ? 'not-allowed' : 'pointer',
-                  border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
-                  boxSizing: 'border-box',
-                  opacity: isJobLocked && selectedImageBase64 !== img.url ? 0.5 : 1
-                }}
-              >
-                <div className="image-slot">
-                  <div className={`badge ${img.status.toLowerCase()}`}>
-                    {img.status}
-                  </div>
-                  <img src={img.url} alt="Generated view" style={{width: '100%', height: '100%', objectFit: 'contain'}} />
-                  <div className="overlay-text">
-                    <div>Generated Image</div>
-                    <div>
-                      CLIP Score: {img.score !== "N/A"
-                        ? `${getClipLabel(img.score)} (${img.score})`
-                        : "N/A"}
+              {generatedImages.map((img) => (
+                <div
+                  key={img.id}
+                  className="image-card"
+                  onClick={() => !isJobLocked && setSelectedImageBase64(img.url)}
+                  style={{
+                    cursor: isJobLocked ? 'not-allowed' : 'pointer',
+                    border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
+                    boxSizing: 'border-box',
+                    opacity: isJobLocked && selectedImageBase64 !== img.url ? 0.5 : 1
+                  }}
+                >
+                  <div className="image-slot">
+                    <div className={`badge ${img.status.toLowerCase()}`}>
+                      {img.status}
+                    </div>
+                    <img src={img.url} alt="Generated view" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <div className="overlay-text">
+                      <div>Generated Image</div>
+                      <div>
+                        CLIP Score: {img.score !== "N/A"
+                          ? `${getClipLabel(img.score)} (${img.score})`
+                          : "N/A"}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
           )}
         </section>
 
-       {/* COLUMN 3: OUTPUT */}
+        {/* ── COLUMN 3: 3D OUTPUT ── */}
         <section className="column output-column">
           <div className="column-header">OUTPUT: Final 3D Model</div>
 
-          {/* Dynamic 3D Model Dropdown */}
           <select
             className="dropdown-btn"
             value={selected3DModel}
@@ -671,13 +659,10 @@ const Dashboard = () => {
           >
             <option value="">Choose 3D Generator</option>
             {threeDModels.map((modelName) => (
-              <option key={modelName} value={modelName}>
-                {modelName}
-              </option>
+              <option key={modelName} value={modelName}>{modelName}</option>
             ))}
           </select>
 
-          {/* Bind button to fetch function */}
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
@@ -686,34 +671,32 @@ const Dashboard = () => {
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
 
-          {/* 3D Asset Display Canvas */}
           <div className="asset-display" style={{ overflow: 'hidden', position: 'relative' }}>
-              {isGenerating3D && (
-                <div style={{ color: 'white', textAlign: 'center' }}>
-                  <p>Building 3D model...</p>
-                  <small>This may take a minute.</small>
-                </div>
-              )}
+            {isGenerating3D && (
+              <div style={{ color: 'white', textAlign: 'center' }}>
+                <p>Building 3D model...</p>
+                <small>This may take a minute.</small>
+              </div>
+            )}
 
-              {!isGenerating3D && modelUrl && (
-                <model-viewer
-                  ref={modelViewerRef}
-                  src={modelUrl}
-                  auto-rotate
-                  camera-controls
-                  environment-image="neutral" // Adds a default HDRI lighting environment
-                  exposure="1"                // Adjusts the brightness
-                  shadow-intensity="1"        // Grounds the model with a shadow
-                  style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
-                ></model-viewer>
-              )}
+            {!isGenerating3D && modelUrl && (
+              <model-viewer
+                ref={modelViewerRef}
+                src={modelUrl}
+                auto-rotate
+                camera-controls
+                environment-image="neutral" // Adds a default HDRI lighting environment
+                exposure="1"                // Adjusts the brightness
+                shadow-intensity="1"        // Grounds the model with a shadow
+                style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
+              ></model-viewer>
+            )}
 
-              {!isGenerating3D && !modelUrl && (
-                <p style={{ color: '#666' }}>No model generated yet.</p>
-              )}
+            {!isGenerating3D && !modelUrl && (
+              <p style={{ color: '#666' }}>No model generated yet.</p>
+            )}
           </div>
 
-          {/* VLM Comparison Section */}
           <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem' }}>
             <button
               className="action-btn"
@@ -725,7 +708,7 @@ const Dashboard = () => {
             </button>
           </div>
 
-         <div className="download-row" style={{ marginTop: '0.25rem', paddingBottom: '0' }}>
+          <div className="download-row" style={{ marginTop: '0.25rem', paddingBottom: '0' }}>
             <select
               className="dropdown-btn download-select"
               value={downloadFormat}
@@ -745,7 +728,6 @@ const Dashboard = () => {
             </button>
           </div>
 
-          {/* Save button */}
           <button
             className="action-btn"
             style={{
@@ -760,11 +742,10 @@ const Dashboard = () => {
           >
             Save and start new job (only the 3D Model will be cleared)
           </button>
-
         </section>
       </main>
 
-      {/* NEW: MODAL OVERLAY PORTION (Add right before the final closing </div>) */}
+      {/* ── SAVE JOB MODAL ── */}
       {showSaveModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -819,7 +800,7 @@ const Dashboard = () => {
         </div>
       )}
 
-     {/* VLM ANALYSIS MODAL */}
+      {/* ── DISCREPANCY ANALYSIS MODAL ── */}
       {showAnalysisModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '600px' }}>
@@ -838,8 +819,8 @@ const Dashboard = () => {
             </div>
 
             <div style={{ fontSize: '0.9rem', color: '#555', backgroundColor: '#e9ecef', padding: '10px', borderRadius: '4px', textAlign: 'center' }}>
-              <strong>Want to use this prompt?</strong> <br/>
-              Copy the text above to your clipboard, close this pop-up, and click "Save and start new job" for a fresh run.
+              <strong>Want to use this prompt?</strong> <br />
+              Copy the text above, close this pop-up, and click "Save and start new job" for a fresh run.
             </div>
 
             <div className="modal-actions" style={{ justifyContent: 'center', marginTop: '1.5rem' }}>

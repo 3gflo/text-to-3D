@@ -1,14 +1,17 @@
-// src/components/LandingPage.jsx
 import React from 'react';
 import './LandingPage.css';
 
-// Importing assets (Vite way)
-// Ensure these files exist in src/assets/
 import iconText from '../assets/icon-text.png';
 import iconImage from '../assets/icon-image.png';
 import iconClip from '../assets/icon-clip.png';
 import icon3d from '../assets/icon-3d.png';
 
+/**
+ * Landing page shown before the user enters the dashboard.
+ * Displays a high-level overview of the 4-step generation pipeline.
+ *
+ * @param {{ onStart: () => void }} props
+ */
 const LandingPage = ({ onStart }) => {
   return (
     <div className="landing-container">
@@ -30,7 +33,6 @@ const LandingPage = ({ onStart }) => {
       </div>
 
       <div className="steps-container">
-        {/* Step 1 */}
         <div className="step-item">
           <div className="icon-bubble">
             <img src={iconText} alt="Text Input" />
@@ -38,10 +40,8 @@ const LandingPage = ({ onStart }) => {
           <div className="step-label">1. Text Input</div>
         </div>
 
-        {/* Line */}
         <div className="connector-line"></div>
 
-        {/* Step 2 */}
         <div className="step-item">
           <div className="icon-bubble">
             <img src={iconImage} alt="2D Gen" />
@@ -49,10 +49,8 @@ const LandingPage = ({ onStart }) => {
           <div className="step-label">2. AI 2D Image Generation</div>
         </div>
 
-        {/* Line */}
         <div className="connector-line"></div>
 
-        {/* Step 3 */}
         <div className="step-item">
           <div className="icon-bubble">
             <img src={iconClip} alt="CLIP Check" />
@@ -60,10 +58,8 @@ const LandingPage = ({ onStart }) => {
           <div className="step-label">3. Automated CLIP Check</div>
         </div>
 
-        {/* Line */}
         <div className="connector-line"></div>
 
-        {/* Step 4 */}
         <div className="step-item">
           <div className="icon-bubble">
             <img src={icon3d} alt="3D Gen" />
