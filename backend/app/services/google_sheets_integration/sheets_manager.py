@@ -1,4 +1,4 @@
-from _.services.google_sheets_integration.sheets_client import GoogleSheetsClient
+from app.services.google_sheets_integration.sheets_client import GoogleSheetsClient
 
 
 class MockSheetManager:
