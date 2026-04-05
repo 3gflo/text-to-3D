@@ -35,7 +35,7 @@ You will construct this prompt by rigorously following a 4-layer framework:
     * **Lighting:** "bright, even, neutral studio lighting," "soft, diffused lighting," "minimal shadows." (This is critical for 3D reconstruction).
     * **Background:** "plain neutral gray background," "isolated on a white background."
     * **Quality:** "hyperrealistic CG render," "high-fidelity," "8K," "Unreal Engine 5 render."
-    * **View:** "4-view orthographic sheet," "front, back, left, and right viewss."
+    * **View:** "4-view orthographic sheet," "front, back, left, and right views."
 
 ---
 **Constraint:** Respond ONLY with the generated prompt. Do not include "Here is your prompt:" or any other text.
@@ -43,79 +43,74 @@ You will construct this prompt by rigorously following a 4-layer framework:
 
 
 class PromptServiceRegistry:
-    def __init__(self, app_config):
-        google_key = app_config.get('GOOGLE_KEY')
-        hf_token = app_config.get('HF_TOKEN')
+    """Registry of available prompt optimization services, keyed by model name."""
 
-        self._services = {
+    def __init__(self, app_config: dict) -> None:
+        google_key: str | None = app_config.get('GOOGLE_KEY')
+        hf_token: str | None = app_config.get('HF_TOKEN')
+
+        self._services: dict[str, BasePromptGenerator] = {
             "gemini-2.5-flash": GeminiPromptGenerator(google_key) if google_key else MockPromptGenerator(),
             "gpt-oss": GPTOSSPromptGenerator(hf_token) if hf_token else MockPromptGenerator(),
         }
 
-    def get_service(self, service_name):
+    def get_service(self, service_name: str) -> 'BasePromptGenerator':
         return self._services.get(service_name.lower(), self._services["gemini-2.5-flash"])
 
-    def get_services(self):
+    def get_services(self) -> dict[str, 'BasePromptGenerator']:
         return self._services
 
 
 class BasePromptGenerator(ABC):
     @abstractmethod
     def generate(self, prompt: str) -> str | None:
+        """Optimize a short user prompt into a detailed image generation prompt."""
         pass
 
 
 class GeminiPromptGenerator(BasePromptGenerator):
-    def __init__(self, api_key):
+    def __init__(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
         self.model_name = 'gemini-2.5-flash'
 
     def generate(self, prompt: str) -> str | None:
-        print("Trying gemini prompt...")
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION
-                ),
+                config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION),
                 contents=prompt
             )
             return response.text
         except Exception as e:
-            print(f"Gemini Prompt Error: {e}")
+            print(f"Gemini prompt error: {e}")
             return None
 
 
 class GPTOSSPromptGenerator(BasePromptGenerator):
-    def __init__(self, api_key):
+    def __init__(self, api_key: str) -> None:
         self.client = InferenceClient(api_key=api_key)
         self.model_name = 'openai/gpt-oss-20b:groq'
 
     def generate(self, prompt: str) -> str | None:
-        print("Trying OpenAI prompt...")
         try:
             completion = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": SYSTEM_INSTRUCTION
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    },
+                    {"role": "system", "content": SYSTEM_INSTRUCTION},
+                    {"role": "user", "content": prompt},
                 ],
             )
             return completion.choices[0].message.content
         except Exception as e:
-            print(f"HuggingFace Prompt Error: {e}")
+            print(f"HuggingFace prompt error: {e}")
             return None
 
 
 class MockPromptGenerator(BasePromptGenerator):
+    """Fallback generator used when no API key is available."""
+
     def generate(self, prompt: str) -> str | None:
-        print(f"DEBUG: Mock Prompt Generator used for prompt: {prompt}")
+        print(f"MockPromptGenerator called for: {prompt}")
         return (
             f"A hyperrealistic CG render of {prompt}, featuring precise geometric forms "
             "with smooth polished surfaces and subtle material imperfections, presented in "

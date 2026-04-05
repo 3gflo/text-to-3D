@@ -1,71 +1,137 @@
-# Generative AI Modules
+# Generation Services
 
+Three separate services that handle each stage of the AI generation pipeline: prompt optimization, 2D image generation, and 3D model generation. All three follow the same **Registry + Abstract Base Class** pattern for consistency and extensibility.
 
-## Image Generation Module
-An interface for generating 2D images using various AI services, abstracting the complexity of different API schemas and providing a unified binary output.
+---
 
-### Structure
+## Architecture Pattern
 
-| Component | File | Description |
-| :--- | :--- | :--- |
-| **Registry** | `image_generator.py` | Central controller that manages service initialization based on available API keys. |
-| **Services** | `image_generator.py` | Contains specific class implementations for Imagen, GPT-image, and Nano-Banana. |
-| **Fallback** | `image_generator.py` | Includes a MockImageGenerator that returns a placeholder image if no valid API keys are detected. |
+```
+XServiceRegistry(app_config)
+    ├── Reads API keys from config at startup
+    ├── Initializes concrete service instances (or mocks if keys are missing)
+    └── get_service(name) → service instance
 
-### Functions
+BaseXGenerator (ABC)
+    └── generate(...) → output          # enforced interface
 
-These functions are managed via the ImageServiceRegistry and the individual service classes.
+ConcreteGenerator(BaseXGenerator)
+    └── generate(...) → output          # API-specific implementation
 
-#### generate(prompt)
+MockXGenerator(BaseXGenerator)
+    └── generate(...) → placeholder     # used when key is absent
+```
 
-    Input: A text description of the image to be created.
+Adding a new model means creating a new subclass of the relevant ABC and registering it in the registry's `_services` dict.
 
-    Process: Sends the prompt to the selected AI provider (e.g., OpenAI's DALL-E or Google's Imagen).
+---
 
-    Output: Returns raw bytes of the generated image (standardized to image/png format), allowing for immediate local saving or further processing.
+## Prompt Generation — `prompt_generator.py`
 
-#### get_service(service_name)
+Converts a short user description into a structured, detailed prompt optimized for multi-view image generation and 3D reconstruction.
 
-    Input: The string name of the desired service (e.g., "GPT-image", "imagen").
+### System Instruction
 
-    Behavior: Returns the initialized service instance. If a service is requested but its API key is missing from the environment, it returns the Mock Generator to prevent system crashes.
+The `SYSTEM_INSTRUCTION` constant defines a 4-layer prompt engineering framework used as the system prompt for every LLM call:
 
+| Layer | Focus |
+|-------|-------|
+| WHAT | Single core subject |
+| FORM | Shape and structural adjectives |
+| MATERIAL | PBR surface descriptions (texture, reflectance, imperfections) |
+| AESTHETICS | Artistic style and rendering genre |
 
+The instruction also mandates specific lighting, background, quality markers, and a 4-view orthographic layout — all critical for downstream 3D reconstruction quality.
 
-## 3D Generation Module
-A high-level interface for transforming 2D images into 3D assets (.glb meshes) using reconstruction models via the Fal.ai platform.
+### Services
 
-### Structure
+| Name | Class | Model |
+|------|-------|-------|
+| `gemini-2.5-flash` | `GeminiPromptGenerator` | Gemini 2.5 Flash (Google AI) |
+| `gpt-oss` | `GPTOSSPromptGenerator` | GPT-OSS 20B via Hugging Face Inference API |
+| *(fallback)* | `MockPromptGenerator` | Returns a hardcoded template prompt |
 
-| Component | File | Description |
-| :--- | :--- | :--- |
-| **Registry** | `threeD_generator.py` | Handles the injection of the FAL_KEY into the environment and initializes the 3D generation backend. |
-| **Services** | `image_generator.py` | Implements dedicated classes for the Trellis and Hunyuan3D models. |
-| **Utility** | `image_generator.py` | Provides helper methods for converting image bytes to Data URIs and downloading final model files from remote URLs. |
-| **Fallback** | `image_generator.py` | Includes a MockGenerator that returns a placeholder .glb if no valid API key is detected. |
+### Interface
 
+```python
+# Get a service by name (falls back to gemini-2.5-flash if name is unknown)
+service = registry.get_service("gemini-2.5-flash")
 
-### Functions
+# Generate an optimized prompt
+optimized: str | None = service.generate("a dining chair")
+```
 
-These functions are located in the Base3DGenerator subclasses and are used to drive the 3D creation pipeline.
+---
 
-#### generate(image)
+## Image Generation — `image_generator.py`
 
-    Input: A list of image bytes (usually the output from the Image Generation module).
+Generates 2D concept images from a prompt. Always returns raw PNG bytes, regardless of the underlying provider.
 
-    Process:
+### Services
 
-        Converts the raw bytes into a Base64 Data URI.
+| Name | Class | Model |
+|------|-------|-------|
+| `imagen` | `Imagen` | Imagen 4.0 (Google AI) |
+| `nano-banana` | `NanoBanana` | Gemini 3 Pro (multi-modal content generation) |
+| `gpt-image` | `GPT_image` | GPT-Image 1.5 (OpenAI) |
+| *(fallback)* | `MockImageGenerator` | Returns a 100×100 solid blue PNG |
 
-        Submits the request to Fal.ai and waits for the result.
+### Interface
 
-        Robustly parses the result for model_mesh or model_glb download URLs.
+```python
+service = registry.get_service("imagen")
 
-    Output: Returns the binary content of the generated .glb file.
+# Returns a list of raw PNG bytes, one per image
+images: list[bytes] = service.generate(prompt, num_images=3)
+```
 
-#### get_service(service_name)
+The `/api/generate-image` route always requests 3 images and encodes each as a base64 data URI before sending to the frontend.
 
-    Input: The string name of the desired service (e.g., "trellis", "hunyuan").
+---
 
-    Behavior: Returns the requested service instance or Trellis as a default. If no FALAI_KEY is provided, it returns the Mock3DGenerator to prevent system crashes.
+## 3D Model Generation — `threeD_generator.py`
 
+Converts one or more 2D images into a `.glb` 3D mesh. All generators use the [fal.ai](https://fal.ai) platform as the inference backend.
+
+### Services
+
+| Name | Class | Model | Min. Images |
+|------|-------|-------|-------------|
+| `trellis` | `Trellis` | fal-ai/trellis/multi | 1 (auto-split) |
+| `trellis-2` | `Trellis2` | fal-ai/trellis-2 | 1 (auto-split) |
+| `hunyuan` | `Hunyuan` | fal-ai/hunyuan3d/v2/multi-view | 3 |
+| `hunyuan-pro` | `HunyuanPro` | fal-ai/hunyuan-3d/v3.1/pro/image-to-3d | 1 |
+| *(fallback)* | `Mock3DGenerator` | — | Returns a minimal GLB header |
+
+### Orthographic Sheet Splitting
+
+The image generation models produce a single 2×2 orthographic sheet (front, back, left, right). The `split_orthographic_sheet(sheet_bytes)` utility splits this into four individual view images, which are then passed to the 3D generator.
+
+```
+┌────────┬────────┐
+│  Front │  Back  │
+├────────┼────────┤
+│  Left  │  Right │
+└────────┴────────┘
+```
+
+This splitting happens automatically in the `/api/generate-3d-model` route when only one image is provided.
+
+### Interface
+
+```python
+service = registry.get_service("trellis")
+
+# Accepts a list of view images as raw bytes, returns GLB bytes
+model_bytes: bytes | None = service.generate(image_bytes_list)
+```
+
+### Base Class Helpers
+
+All generators inherit from `Base3DGenerator`, which provides:
+
+| Method | Description |
+|--------|-------------|
+| `_bytes_to_data_uri(image_bytes)` | Encodes raw bytes as a `data:image/png;base64,...` URI for fal.ai |
+| `_extract_url(result, service_name)` | Extracts the GLB download URL from varied fal.ai response shapes |
+| `_download_file(url)` | Downloads the model file from a remote URL and returns raw bytes |
