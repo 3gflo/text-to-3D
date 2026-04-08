@@ -72,3 +72,6 @@ dist-ssr
 *.sln
 *.sw?
 .vite/*
+frontend/package.json
+frontend/package-lock.json
+frontend/package-lock.json
