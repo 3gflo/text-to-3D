@@ -363,3 +363,91 @@ textarea:disabled {
   border-radius: 8px;
   background-color: rgba(255, 255, 255, 0.5);
 }
+
+/* --- PER-VIEW REGENERATION CONTROLS --- */
+.regen-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  line-height: 1;
+}
+
+.image-slot:hover .regen-btn {
+  opacity: 1;
+}
+
+.regen-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.regen-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.regen-feedback-area {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  align-items: center;
+}
+
+.regen-feedback-area input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.regen-go-btn {
+  padding: 5px 10px;
+  background: var(--gulfstream-blue);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.regen-go-btn:hover {
+  opacity: 0.9;
+}
+
+.regen-cancel-btn {
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+}

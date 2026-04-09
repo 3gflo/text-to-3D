@@ -43,8 +43,16 @@ class ClipScorerService:
             image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
             text_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
             
-            similarity = (image_embeds @ text_embeds.T).item()
-            return round(similarity, 4)
+            raw_similarity = (image_embeds @ text_embeds.T).item()
+
+            # Rescale from typical CLIP cosine similarity range (~0.15–0.40)
+            # to a more intuitive 0–1 scale
+            min_clip = 0.15
+            max_clip = 0.40
+            scaled = (raw_similarity - min_clip) / (max_clip - min_clip)
+            scaled = max(0.0, min(1.0, scaled))
+
+            return round(scaled, 4)
             
         except Exception as e:
             print(f"Error calculating CLIP score: {e}")

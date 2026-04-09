@@ -1,15 +1,17 @@
 import zipfile
 import base64
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, request, send_file, jsonify, current_app
-from app.services.generation.threeD_generator import split_orthographic_sheet
 from io import BytesIO
 
 from app.services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
 # Define the blueprint
 api_bp = Blueprint('api', __name__)
+
+DEFAULT_VIEWPOINTS = ["front", "back", "left", "right"]
 
 
 @api_bp.route('/health')
@@ -22,6 +24,7 @@ def generate_image():
     data = request.get_json()
     optimized_prompt = data.get('optimized_prompt')
     service_choice = data.get('service')
+    viewpoints = data.get('viewpoints', DEFAULT_VIEWPOINTS)
 
     if not optimized_prompt:
         return {'error': 'No prompt provided'}, 400
@@ -33,29 +36,142 @@ def generate_image():
     if not service:
         return {'error': f'Service {service_choice} not supported'}, 400
 
-    images = service.generate(optimized_prompt, num_images = 3)
-    if images and len(images) > 0:
-        b64_images = []
-        for img_bytes in images:
-             # Encode to base64 string
-            b64_str = base64.b64encode(img_bytes).decode('utf-8')
-            # Add data URI prefix
-            b64_images.append(f"data:image/png;base64,{b64_str}")
+    viewpoint_images = {}
+    failed_viewpoints = []
 
-        return jsonify({
-            'status': 'success',
-            'images': b64_images,
-            'count': len(b64_images)
-        }), 200
+    # Step 1: Generate the front view first
+    front_image_bytes = None
+    front_prompt = f"{optimized_prompt}, front view, single view only"
+    try:
+        images = service.generate(front_prompt, num_images=1)
+        if images and len(images) > 0:
+            front_image_bytes = images[0]
+            b64_str = base64.b64encode(front_image_bytes).decode('utf-8')
+            viewpoint_images["front"] = f"data:image/png;base64,{b64_str}"
+        else:
+            viewpoint_images["front"] = None
+            failed_viewpoints.append("front")
+    except Exception as e:
+        print(f"Image generation failed for front view: {e}")
+        viewpoint_images["front"] = None
+        failed_viewpoints.append("front")
 
-    return {'error': 'Image Generation failed'}, 500
+    # Step 2: Generate remaining views in parallel, using front image as reference
+    remaining_viewpoints = [vp for vp in viewpoints if vp != "front"]
+    ref_generator = registry.get_reference_generator()
+
+    def generate_viewpoint(viewpoint):
+        viewpoint_prompt = f"{optimized_prompt}, {viewpoint} view, single view only. Use the provided front view as reference for consistency."
+        try:
+            if front_image_bytes is not None and service.supports_reference:
+                # Use selected model's own reference-based generation
+                images = service.generate_with_reference(viewpoint_prompt, front_image_bytes)
+            elif front_image_bytes is not None and ref_generator is not None:
+                # Fallback to Flux 2 Pro Edit for models that don't support reference (e.g. Imagen)
+                images = ref_generator.generate_with_reference(viewpoint_prompt, front_image_bytes)
+            else:
+                images = service.generate(viewpoint_prompt, num_images=1)
+            if images and len(images) > 0:
+                b64_str = base64.b64encode(images[0]).decode('utf-8')
+                return viewpoint, f"data:image/png;base64,{b64_str}"
+            return viewpoint, None
+        except Exception as e:
+            print(f"Image generation failed for {viewpoint} view: {e}")
+            return viewpoint, None
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = executor.map(generate_viewpoint, remaining_viewpoints)
+
+    for viewpoint, image_data in results:
+        viewpoint_images[viewpoint] = image_data
+        if image_data is None:
+            failed_viewpoints.append(viewpoint)
+
+    # If all viewpoints failed, return error
+    if len(failed_viewpoints) == len(viewpoints):
+        return {'error': 'Image generation failed for all viewpoints'}, 500
+
+    response = {
+        'status': 'success',
+        'viewpoint_images': viewpoint_images,
+        'viewpoints': viewpoints,
+        'count': len(viewpoints) - len(failed_viewpoints)
+    }
+
+    if failed_viewpoints:
+        response['failed_viewpoints'] = failed_viewpoints
+
+    return jsonify(response), 200
+
+
+@api_bp.route('/regenerate-view', methods=['POST'])
+def regenerate_view():
+    data = request.get_json()
+    optimized_prompt = data.get('optimized_prompt')
+    viewpoint = data.get('viewpoint')
+    service_choice = data.get('service')
+    reference_image = data.get('reference_image')
+    user_feedback = data.get('user_feedback')
+    prompt_service_choice = data.get('prompt_service', 'gemini-3-flash-preview')
+
+    context_images = data.get('context_images', [])
+
+    if not optimized_prompt or not viewpoint:
+        return {'error': 'Prompt and viewpoint are required'}, 400
+
+    image_registry = current_app.extensions['image_registry']
+    service = image_registry.get_service(service_choice)
+
+    if not service:
+        return {'error': f'Image service {service_choice} not supported'}, 400
+
+    # Step 1: Refine prompt if user provided feedback (with visual context if available)
+    prompt_to_use = optimized_prompt
+    if user_feedback and user_feedback.strip():
+        prompt_registry = current_app.extensions['prompt_registry']
+        prompt_service = prompt_registry.get_service(prompt_service_choice)
+        refined = prompt_service.refine(optimized_prompt, viewpoint, user_feedback, context_images or None)
+        if refined:
+            prompt_to_use = refined
+
+    # Step 2: Build the viewpoint-specific prompt
+    if viewpoint == "front":
+        generation_prompt = f"{prompt_to_use}, front view, single view only"
+    else:
+        generation_prompt = f"{prompt_to_use}, {viewpoint} view, single view only. Use the provided front view as reference for consistency."
+
+    # Step 3: Generate the image
+    try:
+        if viewpoint != "front" and reference_image and service.supports_reference:
+            # Decode the reference image
+            ref_data = reference_image
+            if ',' in ref_data:
+                ref_data = ref_data.split(',')[1]
+            ref_bytes = base64.b64decode(ref_data)
+            images = service.generate_with_reference(generation_prompt, ref_bytes)
+        else:
+            images = service.generate(generation_prompt, num_images=1)
+
+        if images and len(images) > 0:
+            b64_str = base64.b64encode(images[0]).decode('utf-8')
+            return jsonify({
+                'status': 'success',
+                'viewpoint': viewpoint,
+                'image': f"data:image/png;base64,{b64_str}"
+            }), 200
+        else:
+            return {'error': f'Failed to regenerate {viewpoint} view'}, 500
+
+    except Exception as e:
+        print(f"Regeneration failed for {viewpoint} view: {e}")
+        return {'error': f'Regeneration failed: {str(e)}'}, 500
 
 
 @api_bp.route('/optimize-prompt', methods=['POST'])
 def optimize_prompt():
     data = request.get_json()
     prompt = data.get('prompt')
-    service_choice = data.get('service', 'gemini-2.5-flash')
+    service_choice = data.get('service', 'gemini-3-flash-preview')
 
     if not prompt:
         return {'error': 'No prompt provided'}, 400
@@ -106,23 +222,6 @@ def generate_3d_model():
                 img_str = img_str.split(',')[1]
             image_bytes_list.append(base64.b64decode(img_str))
 
-        if len(image_bytes_list) == 1:
-            try:
-                image_bytes_list = split_orthographic_sheet(image_bytes_list[0])
-
-                '''
-                for index, img_bytes in enumerate(image_bytes_list):
-                    filename = f"debug_split_view_{index}.png"
-                    with open(filename, "wb") as f:
-                        f.write(img_bytes)
-                    print(f"Saved debug image: {filename}")
-                '''
-
-            except Exception as e:
-                print(f"Image splitting failed: {e}")
-                return {'error': 'Failed to split image'}
-        
-        
         # Generate the model
         model_bytes = service.generate(image_bytes_list)
 
@@ -156,8 +255,13 @@ def available_models():
         case _:
             return {'error': 'Invalid asset type'}, 400
 
-    services = list(registry.get_services().keys())
-
+    if asset_type == "image":
+        services = [
+            {"name": name, "supports_reference": svc.supports_reference}
+            for name, svc in registry.get_services().items()
+        ]
+    else:
+        services = list(registry.get_services().keys())
 
     return jsonify({'services': services}), 200
 
@@ -364,7 +468,7 @@ def analyze_discrepancies():
 
         # Force JSON output
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3-flash-preview',
             contents=contents,
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
