@@ -58,7 +58,7 @@ def generate_image():
 
     # Step 1: Generate the front view first
     front_image_bytes = None
-    front_prompt = f"{optimized_prompt}, front view, single view only"
+    front_prompt = f"{optimized_prompt}, straight-on front view, single view only"
     try:
         images = service.generate(front_prompt, num_images=1)
         if images and len(images) > 0:
@@ -78,7 +78,12 @@ def generate_image():
     ref_generator = registry.get_reference_generator()
 
     def generate_viewpoint(viewpoint):
-        viewpoint_prompt = f"{optimized_prompt}, {viewpoint} view, single view only. Use the provided front view as reference for consistency."
+        viewpoint_prompt = f"""
+        {optimized_prompt}, {viewpoint} view, single view only. Use the provided front view as reference for consistency.
+        For a back view, rotate 180 degrees to directly show the back. For right view, rotate 90 degrees to the left to
+        directly show the right side (relative to the front). For the left view, rotate 90 degrees to the right to
+        directly show the left side (relative to the front).
+        """
         try:
             if front_image_bytes is not None and service.supports_reference:
                 # Use selected model's own reference-based generation
@@ -160,12 +165,12 @@ def regenerate_view():
             prompt_to_use = refined
 
     # Step 2: Build the viewpoint-specific prompt
-    if viewpoint == "front":
-        generation_prompt = f"{prompt_to_use}, straight on front view, single view only"
-    elif viewpoint == "back":
-        generation_prompt = f"{prompt_to_use}, back view 180 degree rotated from the front, single view only. Use the provided front view as reference for consistency."
-    else:
-        generation_prompt = f"{prompt_to_use}, {viewpoint} view 90 degrees rotated from the front, single view only. Use the provided front view as reference for consistency."
+    generation_prompt = f"""
+            {prompt_to_use}, {viewpoint} view, single view only. Use the provided front view as reference for consistency.
+            For a back view, rotate 180 degrees to directly show the back. For right view, rotate 90 degrees to the left to
+            directly show the right side (relative to the front). For the left view, rotate 90 degrees to the right to
+            directly show the left side (relative to the front).
+            """
 
     # Step 3: Generate the image
     try:
@@ -487,7 +492,8 @@ def analyze_discrepancies():
         The pipeline works as follows:
           1. A user describes a 3D object in plain text.
           2. An LLM converts that description into a detailed image-generation prompt.
-          3. A diffusion model generates multi-view 2D concept images (front, back, left, right).
+          3. A diffusion model generates multi-view 2D concept images, starting with the front.
+          4. Using the generated front view, a back, left, and right view are generated in parallel.
           4. A 3D reconstruction model (e.g., TRELLIS) converts those 2D images into a GLB mesh.
           5. You analyze the gap between the 2D concept and the 3D result, then suggest a \
         better prompt so the next iteration produces a more faithful model.
@@ -561,17 +567,31 @@ def analyze_discrepancies():
         attach_images(input_images, f"Iteration {current_iteration_number} – 2D concept images (CURRENT)")
         attach_images(model_snapshots, f"Iteration {current_iteration_number} – 3D model snapshot (CURRENT)")
 
-        # -------------------------------------------------------------------
-        # Call the model
-        # -------------------------------------------------------------------
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="application/json",
+
+        primary_model = 'gemini-3-flash-preview'
+        fallback_model = 'gemini-2.5-flash'
+        config = types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    response_mime_type="application/json",
+                )
+
+        response = None
+
+        try:
+            # gemini-3-flash-preview may be unavailable due to high demand
+            response = client.models.generate_content(
+                model= primary_model,
+                contents=contents,
+                config=config,
             )
-        )
+        except Exception as e:
+            if '503' in e or 'UNAVAILABLE' in e:
+                print(f"Primary model ({primary_model}) unavailable. Retrying with fallback ({fallback_model})...")
+                response = client.models.generate_content(
+                    model=fallback_model,
+                    contents=contents,
+                    config=config,
+                )
 
         result_data = json.loads(response.text)
 
