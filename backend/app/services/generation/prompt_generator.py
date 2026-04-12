@@ -36,7 +36,7 @@ You will construct this prompt by rigorously following a 4-layer framework:
     * **Lighting:** "bright, even, neutral studio lighting," "soft, diffused lighting," "minimal shadows." (This is critical for 3D reconstruction).
     * **Background:** "plain neutral gray background," "isolated on a white background."
     * **Quality:** "hyperrealistic CG render," "high-fidelity," "8K," "Unreal Engine 5 render."
-    * **View:** "front view."
+    * **View:** "straight on front view."
 
 ---
 **Constraint:** Respond ONLY with the generated prompt. Do not include "Here is your prompt:" or any other text.
@@ -48,7 +48,8 @@ You are a prompt refinement assistant for a text-to-image pipeline that generate
 
 You will receive:
 1. An existing optimized image generation prompt
-2. A target viewpoint (front, back, left, or right)
+2. A target viewpoint (front, back, left, or right). The object should be rotated 90 degrees for left or right views,
+   180 degrees for back view.
 3. User feedback describing what they want changed about that viewpoint
 
 Your task: modify the existing prompt to address the user's feedback for the specified viewpoint.
