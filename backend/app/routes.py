@@ -11,6 +11,23 @@ from .services.generation.prompt_generator import SYSTEM_INSTRUCTION
 
 api_bp = Blueprint('api', __name__)
 
+"""
+In-memory generation history (one list per app process / lifetime).
+Each entry represents one completed iteration:
+  {
+      "prompt":         str,           # optimized prompt sent to the image generator
+      "images":         {viewpoint: "data:image/png;base64,..."},
+      "model_snapshot": str | None     # base64 PNG snapshot of the 3D model
+  }
+Entries are appended automatically by generate-image and analyze-discrepancies.
+
+Note: This is intentionally maintaining a temporary in-memory state for a REST 
+        application, which is an anti-pattern. This direction was taken for the sake 
+        of simplicity and ease of development, but should not be used if the app is
+        deployed or expanded upon.
+"""
+generation_history: list[dict] = []
+
 DEFAULT_VIEWPOINTS = ["front", "back", "left", "right"]
 
 
@@ -90,6 +107,13 @@ def generate_image():
     # If all viewpoints failed, return error
     if len(failed_viewpoints) == len(viewpoints):
         return {'error': 'Image generation failed for all viewpoints'}, 500
+
+    # Record this iteration in history (model_snapshot filled in later by analyze-discrepancies)
+    generation_history.append({
+        'prompt': optimized_prompt,
+        'images': {vp: img for vp, img in viewpoint_images.items() if img is not None},
+        'model_snapshot': None,
+    })
 
     response = {
         'status': 'success',
@@ -402,10 +426,18 @@ def save_job():
 @api_bp.route('/analyze-discrepancies', methods=['POST'])
 def analyze_discrepancies():
     """
-    Compare the 2D concept image against a snapshot of the generated 3D model using Gemini.
+    Compare the 2D concept images against the generated 3D model snapshot using Gemini,
+    with full context from every prior iteration in this app session.
 
-    Returns a brief analysis of discrepancies and a suggested re-optimized prompt that
-    addresses the problem areas for the next generation run.
+    The model snapshot provided here is backfilled onto the most recent history entry
+    (recorded automatically by generate-image), completing that iteration's record.
+
+    Body:
+      original_prompt – the user's original description (for context)
+      input_images    – list of base64 2D concept images for the current iteration
+      model_snapshots – list of base64 PNG snapshots of the current 3D model
+
+    Returns a JSON analysis of discrepancies and a suggested prompt for the next run.
     """
     data = request.get_json()
     original_prompt: str = data.get('original_prompt', '')
@@ -415,32 +447,89 @@ def analyze_discrepancies():
     if not input_images or not model_snapshots:
         return {'error': 'Both input images and model snapshots are required'}, 400
 
+    # Backfill the snapshot onto the most recently recorded history entry so future
+    # analyze calls can show the full picture for that iteration.
+    if generation_history:
+        generation_history[-1]['model_snapshot'] = model_snapshots[0] if model_snapshots else None
+
+    current_iteration_number = len(generation_history)
+
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(api_key=current_app.config['GOOGLE_KEY'])
 
-        prompt_text = f"""
-        You are an expert 3D QA engineer. You are evaluating a 3D generation pipeline.
-        The user originally prompted the image generator with: "{original_prompt}"
-
-        I am providing you with two sets of images:
-        1. The generated 2D concept image(s) (what the 3D model *should* look like).
-        2. Snapshots of the final generated 3D model.
-
-        Task:
-        1. Analyze the discrepancies between the 2D concept and the 3D model (e.g., missing details, distorted geometry, texture failures).
-        2. Based on these failures, write a NEW, optimized image generation prompt. This new prompt should emphasize the problematic areas to force the 2D image generator to create clearer, more distinct features that the 3D generator will have an easier time interpreting.
-
-        Respond STRICTLY in JSON format with the following keys:
-        "analysis": "A brief 2-3 sentence analysis of the discrepancies.",
-        "suggested_prompt": "The new optimized prompt string."
+        # -------------------------------------------------------------------
+        # System prompt
+        # -------------------------------------------------------------------
+        system_prompt = """\
+        You are an expert 3D asset quality-assurance engineer embedded in an iterative \
+        text-to-3D generation pipeline. Your job is to help the pipeline improve itself \
+        across multiple generation attempts.
+        
+        The pipeline works as follows:
+          1. A user describes a 3D object in plain text.
+          2. An LLM converts that description into a detailed image-generation prompt.
+          3. A diffusion model generates multi-view 2D concept images (front, back, left, right).
+          4. A 3D reconstruction model (e.g., TRELLIS) converts those 2D images into a GLB mesh.
+          5. You analyze the gap between the 2D concept and the 3D result, then suggest a \
+        better prompt so the next iteration produces a more faithful model.
+        
+        Your analysis must be grounded in *visual evidence* — what you can actually see in \
+        the images provided. Do not speculate about pipeline internals.
+        
+        When multiple iterations are shown, pay close attention to patterns:
+          - Which problems persist across iterations despite prompt changes?
+          - Which changes in the prompt actually helped?
+          - What aspects of the 2D images (lighting, silhouette clarity, texture contrast, \
+        background noise) tend to confuse the 3D reconstructor?
+        
+        Your output drives the next prompt, so be specific and actionable.\
         """
 
-        contents = [prompt_text]
+        # -------------------------------------------------------------------
+        # Build the message with full history context
+        # -------------------------------------------------------------------
+        past_iterations = generation_history[:-1]  # everything before the current one
+        current_entry = generation_history[-1] if generation_history else None
 
-        def attach_images(img_list: list[str]) -> None:
+        header_lines = [
+            "=== GENERATION SESSION CONTEXT ===",
+            f"User's original description: \"{original_prompt}\"",
+            f"Total prior iterations: {len(past_iterations)}",
+            "",
+        ]
+        for i, it in enumerate(past_iterations, start=1):
+            header_lines.append(
+                f"--- Iteration {i} ---\n"
+                f"Prompt used: \"{it['prompt']}\"\n"
+                f"[Images for iteration {i} follow after this block]"
+            )
+        header_lines += [
+            "",
+            f"--- Current iteration (#{current_iteration_number}) ---",
+            f"Prompt used: \"{current_entry['prompt'] if current_entry else original_prompt}\"",
+            "[Current 2D concept images and 3D model snapshot follow below]",
+            "",
+            "=== YOUR TASK ===",
+            "1. Analyze the discrepancies between the current 2D concept images and the 3D model snapshot.",
+            "   Focus on: geometry accuracy, missing/distorted details, texture/material failures, symmetry issues.",
+            "2. If past iterations are provided, note which issues are recurring and which were introduced or fixed.",
+            "3. Write a NEW optimized image-generation prompt that directly addresses the identified failures.",
+            "   The prompt should guide the diffusion model to produce cleaner, more 3D-reconstruction-friendly images.",
+            "",
+            "Respond STRICTLY in JSON with exactly two keys:",
+            '  "analysis":         "2-4 sentences describing the specific discrepancies observed."',
+            '  "suggested_prompt": "The complete new optimized prompt string."',
+        ]
+
+        contents: list = ["\n".join(header_lines)]
+
+        def attach_images(img_list: list[str], label: str) -> None:
+            if not img_list:
+                return
+            contents.append(f"[{label}]")
             for img_str in img_list:
                 if ',' in img_str:
                     img_str = img_str.split(',')[1]
@@ -448,13 +537,24 @@ def analyze_discrepancies():
                     types.Part.from_bytes(data=base64.b64decode(img_str), mime_type='image/png')
                 )
 
-        attach_images(input_images)
-        attach_images(model_snapshots)
+        for i, it in enumerate(past_iterations, start=1):
+            attach_images(list(it.get('images', {}).values()), f"Iteration {i} – 2D concept images")
+            if it.get('model_snapshot'):
+                attach_images([it['model_snapshot']], f"Iteration {i} – 3D model snapshot")
 
+        attach_images(input_images, f"Iteration {current_iteration_number} – 2D concept images (CURRENT)")
+        attach_images(model_snapshots, f"Iteration {current_iteration_number} – 3D model snapshot (CURRENT)")
+
+        # -------------------------------------------------------------------
+        # Call the model
+        # -------------------------------------------------------------------
         response = client.models.generate_content(
             model='gemini-3-flash-preview',
             contents=contents,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+            )
         )
 
         result_data = json.loads(response.text)
