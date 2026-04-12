@@ -161,9 +161,11 @@ def regenerate_view():
 
     # Step 2: Build the viewpoint-specific prompt
     if viewpoint == "front":
-        generation_prompt = f"{prompt_to_use}, front view, single view only"
+        generation_prompt = f"{prompt_to_use}, straight on front view, single view only"
+    elif viewpoint == "back":
+        generation_prompt = f"{prompt_to_use}, back view 180 degree rotated from the front, single view only. Use the provided front view as reference for consistency."
     else:
-        generation_prompt = f"{prompt_to_use}, {viewpoint} view, single view only. Use the provided front view as reference for consistency."
+        generation_prompt = f"{prompt_to_use}, {viewpoint} view 90 degrees rotated from the front, single view only. Use the provided front view as reference for consistency."
 
     # Step 3: Generate the image
     try:
@@ -179,10 +181,24 @@ def regenerate_view():
 
         if images and len(images) > 0:
             b64_str = base64.b64encode(images[0]).decode('utf-8')
+            image_data_url = f"data:image/png;base64,{b64_str}"
+
+            # Append a new history entry for this targeted regeneration so the full
+            # revision trail is preserved. The prompt here is the refined/tweaked one,
+            # and images contains only the single regenerated viewpoint.
+            prompt_disclaimer = """
+            Note that this prompt was used to regenerate this specific view in order to get a better result
+            """
+            generation_history.append({
+                'prompt': prompt_to_use + prompt_disclaimer,
+                'images': {viewpoint: image_data_url},
+                'model_snapshot': None,
+            })
+
             return jsonify({
                 'status': 'success',
                 'viewpoint': viewpoint,
-                'image': f"data:image/png;base64,{b64_str}"
+                'image': image_data_url
             }), 200
         else:
             return {'error': f'Failed to regenerate {viewpoint} view'}, 500
