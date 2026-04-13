@@ -473,7 +473,7 @@ const Dashboard = () => {
   return (
     <div className="dashboard-container">
       <header className="header">
-        <h1>Gulfstream Text to 3D Model Generator</h1>
+        <h1>Text to 3D Model Generator</h1>
         <h2>Dashboard</h2>
       </header>
 
@@ -734,7 +734,7 @@ const Dashboard = () => {
           <button // VR button
             className="action-btn"
             style={{
-              backgroundColor: modelUrl ? '#8a2be2' : '#6c757d',
+              backgroundColor: modelUrl ? '#003767' : '#6c757d',
               width: '100%',
               marginTop: '0.5rem',
               cursor: modelUrl ? 'pointer' : 'not-allowed',
@@ -743,7 +743,7 @@ const Dashboard = () => {
             onClick={() => setShowVR(true)}
             disabled={!modelUrl || isGenerating3D}
           >
-             🥽 View Model in VR
+             View Model in VR
           </button>
 
           <button
