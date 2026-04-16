@@ -12,10 +12,11 @@ const CLIP_THRESHOLD = 0.25;
 /**
  * Main application dashboard. Manages the full text-to-3D generation workflow:
  *   1. Prompt optimization via LLM
- *   2. Batch image generation with CLIP quality scoring
- *   3. 3D model generation from a selected image
- *   4. Discrepancy analysis comparing the 2D concept to the 3D output
- *   5. Job logging to Google Sheets
+ *   2. Multi-view image generation with CLIP quality scoring
+ *   3. Per-view regeneration with visual feedback
+ *   4. 3D model generation from viewpoint images
+ *   5. Discrepancy analysis comparing the 2D concept to the 3D output
+ *   6. Job logging to Google Sheets
  */
 const Dashboard = () => {
   // State management for prompt optimization
@@ -58,6 +59,11 @@ const Dashboard = () => {
   const [uploadedImage, setUploadedImage] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Per-view regeneration state
+  const [regeneratingView, setRegeneratingView] = useState(null);
+  const [regenFeedback, setRegenFeedback] = useState("");
+  const [showRegenInput, setShowRegenInput] = useState(null);
+
   const modelViewerRef = useRef(null);
   const [discrepancyAnalysis, setDiscrepancyAnalysis] = useState("");
   const [suggestedPrompt, setSuggestedPrompt] = useState("");
@@ -66,10 +72,6 @@ const Dashboard = () => {
 
   /**
    * Map a numeric CLIP score to a human-readable quality label.
-   * Thresholds are calibrated for the CLIP ViT-B/32 model.
-   *
-   * @param {number|string|null} score
-   * @returns {"N/A"|"Low"|"Medium"|"High"}
    */
   const getClipLabel = (score) => {
     if (score === 0.0 || score === null || score === "N/A") return "N/A";
@@ -80,9 +82,6 @@ const Dashboard = () => {
 
   /**
    * Read a user-selected image file and store it as a base64 data URI.
-   * Also auto-selects the image for 3D generation.
-   *
-   * @param {React.ChangeEvent<HTMLInputElement>} event
    */
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -119,7 +118,13 @@ const Dashboard = () => {
           if (response.ok) {
             const data = await response.json();
             const fetchedModels = data.services || [];
-            stateSetters[type].setList(fetchedModels);
+
+            // Image models come as objects {name, supports_reference}, extract names for the dropdown
+            if (type === 'image') {
+              stateSetters[type].setList(fetchedModels.map(m => typeof m === 'string' ? m : m.name));
+            } else {
+              stateSetters[type].setList(fetchedModels);
+            }
           } else {
             throw new Error(`Backend not ready for ${type}`);
           }
@@ -178,8 +183,8 @@ const Dashboard = () => {
   };
 
   /**
-   * Generate a batch of 3 images from the current prompt using the selected image model.
-   * Scores each image with CLIP and sorts the results by score descending.
+   * Generate multi-view images (front, back, left, right) from the current prompt.
+   * Scores each image with CLIP.
    */
   const handleGenerateImages = async () => {
     if (!selectedImageModel || selectedImageModel === "Choose Image Model") {
@@ -215,43 +220,48 @@ const Dashboard = () => {
 
       const data = await response.json();
 
-      if (data.status === 'success' && data.images) {
-        const fetchedResults = data.images.map((imgStr, index) => ({
-          id: index + 1,
-          url: imgStr,
-          score: "N/A",
-          status: "EVALUATING"
-        }));
+      if (data.status === 'success' && data.viewpoint_images) {
+        const viewpoints = data.viewpoints || ['front', 'back', 'left', 'right'];
+        // Map viewpoint images to the UI array format
+        const fetchedResults = viewpoints
+          .filter(vp => data.viewpoint_images[vp] != null)
+          .map((vp, index) => ({
+            id: index + 1,
+            viewpoint: vp,
+            url: data.viewpoint_images[vp],
+            score: "N/A",
+            status: "EVALUATING"
+          }));
 
         setGeneratedImages(fetchedResults);
+        // Auto-select the front view for discrepancy analysis
+        if (fetchedResults.length > 0) {
+          setSelectedImageBase64(fetchedResults[0].url);
+        }
 
         // CLIP evaluation pass
+        const imageUrls = fetchedResults.map(img => img.url);
         try {
           const evalResponse = await fetch('/api/evaluate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ images: data.images, prompt: promptToUse })
+            body: JSON.stringify({
+              images: imageUrls,
+              prompt: promptToUse
+            })
           });
 
           if (evalResponse.ok) {
             const evalData = await evalResponse.json();
             if (evalData.status === 'success') {
               const scoredResults = fetchedResults.map((img, idx) => {
-                const score = evalData.evaluations[idx].score;
+                const score = evalData.evaluations[idx]?.score ?? 0;
                 return {
                   ...img,
-                  score,
+                  score: score,
                   status: getClipLabel(score).toUpperCase()
                 };
               });
-
-              // Sort by CLIP score descending so the best image appears first
-              scoredResults.sort((a, b) => {
-                const scoreA = typeof a.score === 'number' ? a.score : 0;
-                const scoreB = typeof b.score === 'number' ? b.score : 0;
-                return scoreB - scoreA;
-              });
-
               setGeneratedImages(scoredResults);
             }
           }
@@ -270,13 +280,98 @@ const Dashboard = () => {
     }
   };
 
+  // Handler for regenerating a single viewpoint image
+  const handleRegenerateView = async (viewpoint, feedback) => {
+    setRegeneratingView(viewpoint);
+    setShowRegenInput(null);
+
+    const promptToUse = optimizedPrompt || inputPrompt;
+    const frontImage = viewpoint !== "front"
+      ? generatedImages.find(img => img.viewpoint === "front")?.url
+      : null;
+
+    // Collect all current viewpoint images for visual context during prompt refinement
+    const contextImages = generatedImages
+      .filter(img => img.url)
+      .map(img => ({ viewpoint: img.viewpoint, image: img.url }));
+
+    try {
+      const response = await fetch('/api/regenerate-view', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          optimized_prompt: promptToUse,
+          viewpoint: viewpoint,
+          service: selectedImageModel,
+          reference_image: frontImage,
+          user_feedback: feedback || null,
+          prompt_service: selectedPromptService,
+          context_images: contextImages
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Regeneration failed');
+      }
+
+      const data = await response.json();
+
+      // Update the specific viewpoint in generatedImages
+      setGeneratedImages(prev => prev.map(img =>
+        img.viewpoint === viewpoint
+          ? { ...img, url: data.image, score: "N/A", status: "EVALUATING" }
+          : img
+      ));
+
+      // Re-evaluate CLIP score for just this image
+      try {
+        const evalResponse = await fetch('/api/evaluate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            images: [data.image],
+            prompt: promptToUse
+          })
+        });
+
+        if (evalResponse.ok) {
+          const evalData = await evalResponse.json();
+          if (evalData.status === 'success') {
+            const score = evalData.evaluations[0]?.score ?? 0;
+            setGeneratedImages(prev => prev.map(img =>
+              img.viewpoint === viewpoint
+                ? { ...img, score: score, status: getClipLabel(score).toUpperCase() }
+                : img
+            ));
+          }
+        }
+      } catch (evalError) {
+        console.error("CLIP evaluation failed after regen:", evalError);
+        setGeneratedImages(prev => prev.map(img =>
+          img.viewpoint === viewpoint
+            ? { ...img, status: "N/A" }
+            : img
+        ));
+      }
+
+    } catch (error) {
+      console.error("Regeneration failed:", error);
+      alert("Failed to regenerate view: " + error.message);
+    } finally {
+      setRegeneratingView(null);
+      setRegenFeedback("");
+    }
+  };
+
   /**
    * Send the selected image to the 3D generation service and load the returned GLB
    * into the model viewer. Locks the job controls after a successful generation.
    */
   const handleGenerate3DAsset = async () => {
-    if (!selectedImageBase64) {
-      alert("Please generate or select an image first!");
+    const allImages = generatedImages.map(img => img.url);
+    if (allImages.length === 0) {
+      alert("Please generate viewpoint images first!");
       return;
     }
 
@@ -288,7 +383,7 @@ const Dashboard = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          images: [selectedImageBase64],
+          images: allImages,
           service: selected3DModel
         }),
       });
@@ -335,7 +430,6 @@ const Dashboard = () => {
         return;
       }
 
-      // Send the blob to the backend for format conversion
       const localResponse = await fetch(modelUrl);
       const blobData = await localResponse.blob();
 
@@ -356,7 +450,6 @@ const Dashboard = () => {
       const convertedBlob = await response.blob();
       const downloadUrl = URL.createObjectURL(convertedBlob);
 
-      // OBJ exports with textures come back as a ZIP archive
       const extension = (downloadFormat === 'obj' && convertedBlob.type === 'application/zip')
         ? 'zip'
         : downloadFormat;
@@ -394,12 +487,12 @@ const Dashboard = () => {
           text_model: isManualMode ? "N/A" : selectedPromptService,
           optimized_prompt: isManualMode ? "N/A" : optimizedPrompt,
           image_model: isManualMode ? "Manual Upload" : selectedImageModel,
-          image_1: "pending", // TODO: populate with image URLs when Sheets image embedding is supported
+          image_1: "pending",
           image_2: "pending",
           image_3: "pending",
           image_4: "pending",
           three_d_model: selected3DModel,
-          model_link: "pending", // TODO: populate when model storage is configured
+          model_link: "pending",
           analysis: jobAnalysis
         })
       });
@@ -479,7 +572,7 @@ const Dashboard = () => {
 
       <main className="main-content">
 
-        {/* ── COLUMN 1: PROMPT ENGINEERING ── */}
+        {/* -- COLUMN 1: PROMPT ENGINEERING -- */}
         <section className="column">
           <div className="column-header">INPUT: Prompt Engineering</div>
 
@@ -558,11 +651,11 @@ const Dashboard = () => {
             onClick={handleGenerateImages}
             disabled={isGenerating || isJobLocked || isManualMode || !selectedImageModel}
           >
-            {isGenerating ? 'Generating Images...' : 'Generate Batch Images'}
+            {isGenerating ? 'Generating Viewpoint Images...' : 'Generate Viewpoint Images'}
           </button>
         </section>
 
-        {/* ── COLUMN 2: QUALITY CONTROL ── */}
+        {/* -- COLUMN 2: QUALITY CONTROL -- */}
         <section className="column">
           <div className="column-header">PROCESSING & QUALITY CONTROL</div>
 
@@ -619,38 +712,89 @@ const Dashboard = () => {
               )}
 
               {generatedImages.map((img) => (
-                <div
-                  key={img.id}
-                  className="image-card"
-                  onClick={() => !isJobLocked && setSelectedImageBase64(img.url)}
-                  style={{
-                    cursor: isJobLocked ? 'not-allowed' : 'pointer',
-                    border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
-                    boxSizing: 'border-box',
-                    opacity: isJobLocked && selectedImageBase64 !== img.url ? 0.5 : 1
-                  }}
-                >
-                  <div className="image-slot">
-                    <div className={`badge ${img.status.toLowerCase()}`}>
-                      {img.status}
-                    </div>
-                    <img src={img.url} alt="Generated view" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    <div className="overlay-text">
-                      <div>Generated Image</div>
-                      <div>
-                        CLIP Score: {img.score !== "N/A"
-                          ? `${getClipLabel(img.score)} (${img.score})`
-                          : "N/A"}
+                <div key={img.id} style={{ position: 'relative' }}>
+                  <div
+                    className="image-card"
+                    onClick={() => !isJobLocked && setSelectedImageBase64(img.url)}
+                    style={{
+                      cursor: isJobLocked ? 'not-allowed' : 'pointer',
+                      border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
+                      boxSizing: 'border-box',
+                      opacity: isJobLocked && selectedImageBase64 !== img.url ? 0.5 : 1
+                    }}
+                  >
+                    <div className="image-slot">
+                      <div className={`badge ${img.status.toLowerCase()}`}>
+                        {img.status}
+                      </div>
+
+                      {/* Regenerate button -- only after images exist, not during generation or when locked */}
+                      {!isJobLocked && !isGenerating && !regeneratingView && (
+                        <button
+                          className="regen-btn"
+                          title="Regenerate this view"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowRegenInput(showRegenInput === img.viewpoint ? null : img.viewpoint);
+                            setRegenFeedback("");
+                          }}
+                        >
+                          &#x21bb;
+                        </button>
+                      )}
+
+                      {/* Loading overlay during regeneration */}
+                      {regeneratingView === img.viewpoint && (
+                        <div className="regen-overlay">
+                          <span>Regenerating...</span>
+                        </div>
+                      )}
+
+                      <img src={img.url} alt={`${img.viewpoint || ''} view`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      <div className="overlay-text">
+                        <div>{img.viewpoint ? `${img.viewpoint.charAt(0).toUpperCase() + img.viewpoint.slice(1)} View` : 'Generated Image'}</div>
+                        <div>
+                          CLIP Score: {img.score !== "N/A"
+                            ? `${getClipLabel(img.score)} (${img.score})`
+                            : "N/A"}
+                        </div>
                       </div>
                     </div>
                   </div>
+
+                  {/* Inline feedback input for regeneration */}
+                  {showRegenInput === img.viewpoint && (
+                    <div className="regen-feedback-area">
+                      <input
+                        type="text"
+                        placeholder="Optional: describe what to change..."
+                        value={regenFeedback}
+                        onChange={(e) => setRegenFeedback(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRegenerateView(img.viewpoint, regenFeedback);
+                        }}
+                      />
+                      <button
+                        className="regen-go-btn"
+                        onClick={() => handleRegenerateView(img.viewpoint, regenFeedback)}
+                      >
+                        Go
+                      </button>
+                      <button
+                        className="regen-cancel-btn"
+                        onClick={() => { setShowRegenInput(null); setRegenFeedback(""); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </section>
 
-        {/* ── COLUMN 3: 3D OUTPUT ── */}
+        {/* -- COLUMN 3: 3D OUTPUT -- */}
         <section className="column output-column">
           <div className="column-header">OUTPUT: Final 3D Model</div>
 
@@ -669,7 +813,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D || isJobLocked || !selectedImageBase64}
+            disabled={isGenerating3D || isJobLocked || generatedImages.length === 0}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
@@ -688,9 +832,9 @@ const Dashboard = () => {
                 src={modelUrl}
                 auto-rotate
                 camera-controls
-                environment-image="neutral" // Adds a default HDRI lighting environment
-                exposure="1"                // Adjusts the brightness
-                shadow-intensity="1"        // Grounds the model with a shadow
+                environment-image="neutral"
+                exposure="1"
+                shadow-intensity="1"
                 style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
               ></model-viewer>
             )}
@@ -763,7 +907,7 @@ const Dashboard = () => {
         </section>
       </main>
 
-      {/* ── SAVE JOB MODAL ── */}
+      {/* -- SAVE JOB MODAL -- */}
       {showSaveModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -818,7 +962,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* ── DISCREPANCY ANALYSIS MODAL ── */}
+      {/* -- DISCREPANCY ANALYSIS MODAL -- */}
       {showAnalysisModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '600px' }}>

@@ -5,7 +5,7 @@ import json
 
 BASE_URL = "http://127.0.0.1:5055"
 PROMPT = "A black original xbox one controller"
-LLM_SERVICE = "gemini-2.5-flash"    # Options: gemini-2.5-flash, gpt-oss
+LLM_SERVICE = "gemini-3-flash-preview"    # Options: gemini-3-flash-preview, gpt-oss
 IMAGE_SERVICE = "GPT-image"            # Options: imagen, nano-banana, GPT-image
 THREED_SERVICE = "hunyuan-pro"      # Options: trellis, hunyuan (Hunyuan requires >3 images)
 
