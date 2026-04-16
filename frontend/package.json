@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/model-viewer": "^4.1.0",
     "aframe": "^1.7.1",
+    "aframe-environment-component": "^1.5.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

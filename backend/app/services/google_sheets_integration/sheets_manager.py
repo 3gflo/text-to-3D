@@ -91,6 +91,9 @@ class SheetManager:
         last_row_data = all_data[-1]
         headers = all_data[0]
 
+        print(f"DEBUG - Sheets Headers: {headers}")
+        print(f"DEBUG - Python Data Keys: {list(data_dict.keys())}")
+
         new_row = list(last_row_data)
         while len(new_row) < len(headers):
             new_row.append("")

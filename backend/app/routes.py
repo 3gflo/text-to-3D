@@ -5,7 +5,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, request, send_file, jsonify, current_app
-from .services.generation.threeD_generator import split_orthographic_sheet
 from io import BytesIO
 
 from .services.generation.prompt_generator import SYSTEM_INSTRUCTION
@@ -248,13 +247,11 @@ def generate_3d_model():
     Convert one or more base64-encoded images into a GLB 3D model.
 
     Expects JSON: { "images": ["data:image/png;base64,..."], "service": "trellis" }
-
-    A single image is split into 4 orthographic views before being passed to the
-    3D generator. Multiple images are passed through directly.
     """
     data = request.get_json()
     images_data: list[str] = data.get('images', [])
     service_choice: str = data.get('service', 'trellis')
+    is_fast_gen: bool = data.get('is_fast_generation', False)
 
     if not images_data:
         return {'error': 'No images provided. Please provide at least one image.'}, 400
@@ -271,13 +268,6 @@ def generate_3d_model():
             if ',' in img_str:
                 img_str = img_str.split(',')[1]
             image_bytes_list.append(base64.b64decode(img_str))
-
-        if len(image_bytes_list) == 1:
-            try:
-                image_bytes_list = split_orthographic_sheet(image_bytes_list[0])
-            except Exception as e:
-                print(f"Image splitting failed: {e}")
-                return {'error': 'Failed to split image'}
 
         model_bytes: bytes | None = service.generate(image_bytes_list)
 
@@ -411,7 +401,6 @@ def convert_model():
         traceback.print_exc()
         return {'error': f'Conversion failed: {str(e)}'}, 500
 
-
 @api_bp.route('/save-job', methods=['POST'])
 def save_job():
     """Persist a completed generation job to Google Sheets."""
@@ -429,45 +418,33 @@ def save_job():
                 return "Image data too large for Sheets"
             return val
 
-        # Grab the full grid image. 
-        raw_image_data = data.get('image_3')
-        if not raw_image_data or not str(raw_image_data).startswith('data:image'):
-            raw_image_data = data.get('image_1', '')
-            
         # Initialize 4 sheet columns
         sheet_images = ["", "", "", ""]
 
-        # If valid image, split it and upload
-        if raw_image_data and str(raw_image_data).startswith('data:image'):
-            # Strip the "data:image/png;base64," prefix
-            b64_str = raw_image_data.split(',')[1] if ',' in raw_image_data else raw_image_data
+        # Loop through the 4 potential images directly without splitting
+        for i in range(4):
+            raw_image_data = data.get(f'image_{i+1}')
             
-            try:
-                # Decode base64 to raw bytes
-                img_bytes = base64.b64decode(b64_str)
+            if raw_image_data and str(raw_image_data).startswith('data:image'):
+                # Strip the "data:image/png;base64," prefix
+                b64_str = raw_image_data.split(',')[1] if ',' in raw_image_data else raw_image_data
                 
-                split_images_bytes = split_orthographic_sheet(img_bytes)
-                
-                for i, quadrant_bytes in enumerate(split_images_bytes):
+                try:
                     if uploader:
-                        # Convert bytes back to base64 for the Drive Uploader
-                        quadrant_b64 = base64.b64encode(quadrant_bytes).decode('utf-8')
-                        filename = f"generated_img_{uuid.uuid4().hex[:8]}_quadrant_{i+1}.png"
+                        filename = f"generated_img_{uuid.uuid4().hex[:8]}_view_{i+1}.png"
+                        url = uploader.upload_base64_image(b64_str, filename)
                         
-                        url = uploader.upload_base64_image(quadrant_b64, filename)
                         if url:
                             raw_image_url = url.replace('export=view', 'export=download')
-                            
                             # Wraps the IMAGE formula in a HYPERLINK formula
                             sheet_images[i] = f'=HYPERLINK("{url}", IMAGE("{raw_image_url}"))'
                         else:
                             sheet_images[i] = "Drive Upload Failed"
-            except Exception as e:
-                print(f"Error splitting/uploading images: {e}")
-                sheet_images = ["Split Failed"] * 4
-        else:
-            status = process_text_status(raw_image_data)
-            sheet_images = [status] * 4
+                except Exception as e:
+                    print(f"Error uploading image {i+1}: {e}")
+                    sheet_images[i] = "Upload Failed"
+            elif raw_image_data:
+                sheet_images[i] = process_text_status(raw_image_data)
             
         # 3D MODEL UPLOAD
         raw_model_data = data.get('model_data')
