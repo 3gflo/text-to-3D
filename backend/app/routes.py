@@ -79,14 +79,13 @@ def generate_image():
 
     def generate_viewpoint(viewpoint):
         viewpoint_prompt = f"""
-        {optimized_prompt}, {viewpoint} view ONLY. 
-        
-        CRITICAL: Generate EXACTLY ONE single image. Do not generate a grid, collage, split-screen, or multiple angles in the same image.
-        
-        Use the provided front view as a strict visual reference. Imagine a fixed camera looking dead-on at the front of the object. Do not move the camera. Instead, rotate the object itself:
-        - For a back view: rotate the object 180 degrees to directly show the back.
-        - For a right view: rotate the object exactly 90 degrees counterclockwise so the right side directly faces the camera.
-        - For a left view: rotate the object exactly 90 degrees clockwise so the left side directly faces the camera.
+        {optimized_prompt}. 
+        CRITICAL CAMERA INSTRUCTIONS: Generate a perfectly flat, orthographic projection of the {viewpoint} elevation ONLY. Zero perspective distortion. The camera must be perfectly aligned and dead-center. 
+        CRITICAL FORMAT: Generate EXACTLY ONE single image. NO grids, NO character sheets, NO multiple angles, NO split screens.
+        ROTATION & CONSISTENCY: Use the provided front view as a strict 1:1 visual reference. The materials, proportions, and details MUST be identical. Imagine a fixed camera looking dead-on. Rotate the object itself:
+        - Back view: rotate object 180 degrees.
+        - Right view: rotate object exactly 90 degrees clockwise.
+        - Left view: rotate object exactly 90 degrees counterclockwise.
         """
         try:
             if front_image_bytes is not None and service.supports_reference:
@@ -164,17 +163,24 @@ def regenerate_view():
     if user_feedback and user_feedback.strip():
         prompt_registry = current_app.extensions['prompt_registry']
         prompt_service = prompt_registry.get_service(prompt_service_choice)
+        # We pass context_images here so the LLM can visually analyze the errors
         refined = prompt_service.refine(optimized_prompt, viewpoint, user_feedback, context_images or None)
         if refined:
             prompt_to_use = refined
 
-    # Build the viewpoint-specific prompt
+    # Build the viewpoint-specific prompt using strict orthographic constraints
     generation_prompt = f"""
-            {prompt_to_use}, {viewpoint} view, single view only. Use the provided front view as reference for consistency.
-            For a back view, rotate 180 degrees to directly show the back. For right view, rotate 90 degrees to the left to
-            directly show the right side (relative to the front). For the left view, rotate 90 degrees to the right to
-            directly show the left side (relative to the front).
-            """
+    {prompt_to_use}. 
+
+    CRITICAL CAMERA INSTRUCTIONS: Generate a perfectly flat, orthographic projection of the {viewpoint} elevation ONLY. Zero perspective distortion. The camera must be perfectly aligned and dead-center. 
+
+    CRITICAL FORMAT: Generate EXACTLY ONE single image. NO grids, NO character sheets, NO multiple angles.
+
+    ROTATION & CONSISTENCY: Use the provided front view as a strict visual reference. Imagine a fixed camera looking dead-on. Rotate the object itself:
+    - For a back view: rotate the object 180 degrees.
+    - For a right view: rotate the object exactly 90 degrees clockwise.
+    - For a left view: rotate the object exactly 90 degrees counterclockwise.
+    """
 
     # Generate the image
     try:
@@ -192,12 +198,8 @@ def regenerate_view():
             b64_str = base64.b64encode(images[0]).decode('utf-8')
             image_data_url = f"data:image/png;base64,{b64_str}"
 
-            # Append a new history entry for this targeted regeneration so the full
-            # revision trail is preserved. The prompt here is the refined/tweaked one,
-            # and images contains only the single regenerated viewpoint.
-            prompt_disclaimer = """
-            Note that this prompt was used to regenerate this specific view in order to get a better result
-            """
+            # Append a new history entry for this targeted regeneration
+            prompt_disclaimer = "\n[Note: This prompt was specifically refined to regenerate this view based on visual feedback.]"
             generation_history.append({
                 'prompt': prompt_to_use + prompt_disclaimer,
                 'images': {viewpoint: image_data_url},
