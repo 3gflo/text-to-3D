@@ -79,10 +79,12 @@ def generate_image():
 
     def generate_viewpoint(viewpoint):
         viewpoint_prompt = f"""
-        {optimized_prompt}, {viewpoint} view, single view only. Use the provided front view as reference for consistency.
-        For a back view, rotate 180 degrees to directly show the back. For right view, rotate 90 degrees to the left to
-        directly show the right side (relative to the front). For the left view, rotate 90 degrees to the right to
-        directly show the left side (relative to the front).
+        {optimized_prompt}, {viewpoint} view, single view only. Use the provided front view as a strict visual reference. 
+    
+        Imagine a fixed camera looking dead-on at the front of the object. Do not move the camera. Instead, rotate the object itself:
+        - For a back view: rotate the object 180 degrees to directly show the back.
+        - For a right view: rotate the object exactly 90 degrees clockwise so the right side (relative to the front) directly faces the camera.
+        - For a left view: rotate the object exactly 90 degrees counterclockwise so the left side (relative to the front) directly faces the camera.
         """
         try:
             if front_image_bytes is not None and service.supports_reference:
@@ -155,7 +157,7 @@ def regenerate_view():
     if not service:
         return {'error': f'Image service {service_choice} not supported'}, 400
 
-    # Step 1: Refine prompt if user provided feedback (with visual context if available)
+    # Refine prompt if user provided feedback (with visual context if available)
     prompt_to_use = optimized_prompt
     if user_feedback and user_feedback.strip():
         prompt_registry = current_app.extensions['prompt_registry']
@@ -164,7 +166,7 @@ def regenerate_view():
         if refined:
             prompt_to_use = refined
 
-    # Step 2: Build the viewpoint-specific prompt
+    # Build the viewpoint-specific prompt
     generation_prompt = f"""
             {prompt_to_use}, {viewpoint} view, single view only. Use the provided front view as reference for consistency.
             For a back view, rotate 180 degrees to directly show the back. For right view, rotate 90 degrees to the left to
@@ -172,7 +174,7 @@ def regenerate_view():
             directly show the left side (relative to the front).
             """
 
-    # Step 3: Generate the image
+    # Generate the image
     try:
         if viewpoint != "front" and reference_image and service.supports_reference:
             # Decode the reference image
