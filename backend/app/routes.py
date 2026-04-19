@@ -79,12 +79,14 @@ def generate_image():
 
     def generate_viewpoint(viewpoint):
         viewpoint_prompt = f"""
-        {optimized_prompt}, {viewpoint} view, single view only. Use the provided front view as a strict visual reference. 
-    
-        Imagine a fixed camera looking dead-on at the front of the object. Do not move the camera. Instead, rotate the object itself:
+        {optimized_prompt}, {viewpoint} view ONLY. 
+        
+        CRITICAL: Generate EXACTLY ONE single image. Do not generate a grid, collage, split-screen, or multiple angles in the same image.
+        
+        Use the provided front view as a strict visual reference. Imagine a fixed camera looking dead-on at the front of the object. Do not move the camera. Instead, rotate the object itself:
         - For a back view: rotate the object 180 degrees to directly show the back.
-        - For a right view: rotate the object exactly 90 degrees clockwise so the right side (relative to the front) directly faces the camera.
-        - For a left view: rotate the object exactly 90 degrees counterclockwise so the left side (relative to the front) directly faces the camera.
+        - For a right view: rotate the object exactly 90 degrees counterclockwise so the right side directly faces the camera.
+        - For a left view: rotate the object exactly 90 degrees clockwise so the left side directly faces the camera.
         """
         try:
             if front_image_bytes is not None and service.supports_reference:
