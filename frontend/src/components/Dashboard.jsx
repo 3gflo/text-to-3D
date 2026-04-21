@@ -374,27 +374,30 @@ const Dashboard = () => {
    * Send the selected image to the 3D generation service and load the returned GLB
    * into the model viewer. Locks the job controls after a successful generation.
    */
-  const handleGenerate3DAsset = async () => {
-    // Determine which images to send based on Fast Generation toggle
+ const handleGenerate3DAsset = async () => {
     let imagesToSend = [];
-  
-    imagesToSend = generatedImages.map(img => img.url);
 
-    if (imagesToSend.length === 0) {
-      alert("Please generate viewpoint images first!");
-      return;
+    // Determine which images to send based on the current mode
+    if (isManualMode) {
+      if (!uploadedImage) {
+        alert("Please upload an image first!");
+        return;
+      }
+      imagesToSend = [uploadedImage];
+    } else {
+      if (generatedImages.length === 0) {
+        alert("Please generate viewpoint images first!");
+        return;
+      }
+      // Slice array to only include the selected images
+      const selectedImages = generatedImages.slice(0, selectedDepthIndex + 1);
+      imagesToSend = selectedImages.map(img => img.url);
     }
 
     setIsGenerating3D(true);
     setModelUrl(null);
 
     try {
-      // Slice array to only include the selected images
-      const selectedImages = generatedImages.slice(0, selectedDepthIndex + 1);
-      
-      // Extract URLs
-      const imagesToSend = selectedImages.map(img => img.url);
-
       const response = await fetch('/api/generate-3d-model', {
         method: 'POST',
         headers: {
@@ -512,7 +515,12 @@ const Dashboard = () => {
         reader.readAsDataURL(blob);
       });
 
-      const selectedImages = generatedImages.slice(0, selectedDepthIndex + 1);
+      let selectedImages = [];
+      if (isManualMode) {
+        selectedImages = [{ url: uploadedImage }];
+      } else {
+        selectedImages = generatedImages.slice(0, selectedDepthIndex + 1);
+      }
 
       // Send the Base64 string to the backend instead of the Blob URL
       const saveResponse = await fetch('http://127.0.0.1:5055/api/save-job', {
@@ -559,7 +567,10 @@ const Dashboard = () => {
    * to Gemini for discrepancy analysis. Populates the analysis modal with results.
    */
   const handleAnalyzeDiscrepancies = async () => {
-    if (!selectedImageBase64 || !modelUrl) {
+    // Explicitly determine which 2D image to send based on the current mode
+    const imageToAnalyze = isManualMode ? uploadedImage : selectedImageBase64;
+
+    if (!imageToAnalyze || !modelUrl) {
       alert("You need both a selected image and a generated 3D model to compare.");
       return;
     }
@@ -578,12 +589,17 @@ const Dashboard = () => {
         reader.readAsDataURL(blob);
       });
 
+      // Provide a safe fallback if analyzing a manual upload without a typed prompt
+      const promptToUse = isManualMode
+        ? ("Manual image upload")
+        : (optimizedPrompt || inputPrompt);
+
       const response = await fetch('/api/analyze-discrepancies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          original_prompt: optimizedPrompt || inputPrompt,
-          input_images: [selectedImageBase64],
+          original_prompt: promptToUse,
+          input_images: [imageToAnalyze],
           model_snapshots: [snapshotBase64]
         }),
       });
@@ -861,7 +877,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D || isJobLocked || generatedImages.length === 0}
+            disabled={isGenerating3D || isJobLocked || (isManualMode ? !uploadedImage : generatedImages.length === 0)}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>

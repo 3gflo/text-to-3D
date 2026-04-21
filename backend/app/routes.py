@@ -560,6 +560,10 @@ def analyze_discrepancies():
           5. You analyze the gap between the 2D concept and the 3D result, then suggest a \
         better prompt so the next iteration produces a more faithful model.
         
+        Alternatively, the user may upload a single image and go straight to 3d generation. \
+        
+        Note that multiple, separate flows may be included in the context. Only account for the relevant ones.\
+        
         Your analysis must be grounded in *visual evidence* — what you can actually see in \
         the images provided. Do not speculate about pipeline internals.
         
