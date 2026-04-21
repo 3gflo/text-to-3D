@@ -1063,8 +1063,6 @@ const Dashboard = () => {
             EXIT VR MODE
           </button>
 
-
-
           <a-scene 
             embedded 
             xr-mode-ui="XRMode: ar"
@@ -1072,7 +1070,7 @@ const Dashboard = () => {
             webxr="optionalFeatures: hit-test, local-floor;"
           >
             {/* AI Generated Model */}
-            <a-entity gltf-model={modelUrl} position="0 0.6 -2" rotation="0 0 0"></a-entity>
+            <a-entity gltf-model={modelUrl} position="0 1 -2" rotation="0 0 0"></a-entity>
             
             {/* Lights */}
             <a-light type="ambient" color="#ffffff" intensity="1.0"></a-light>
