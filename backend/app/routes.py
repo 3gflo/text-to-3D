@@ -55,10 +55,12 @@ def generate_image():
 
     viewpoint_images = {}
     failed_viewpoints = []
+    prompts_used = {}
 
     # Step 1: Generate the front view first
     front_image_bytes = None
     front_prompt = f"{optimized_prompt}, straight-on front view, single view only"
+    prompts_used["front"] = front_prompt
     try:
         images = service.generate(front_prompt, num_images=1)
         if images and len(images) > 0:
@@ -98,17 +100,18 @@ def generate_image():
                 images = service.generate(viewpoint_prompt, num_images=1)
             if images and len(images) > 0:
                 b64_str = base64.b64encode(images[0]).decode('utf-8')
-                return viewpoint, f"data:image/png;base64,{b64_str}"
-            return viewpoint, None
+                return viewpoint, f"data:image/png;base64,{b64_str}", viewpoint_prompt
+            return viewpoint, None, viewpoint_prompt
         except Exception as e:
             print(f"Image generation failed for {viewpoint} view: {e}")
-            return viewpoint, None
+            return viewpoint, None, viewpoint_prompt
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         results = executor.map(generate_viewpoint, remaining_viewpoints)
 
-    for viewpoint, image_data in results:
+    for viewpoint, image_data, used_prompt in results:
         viewpoint_images[viewpoint] = image_data
+        prompts_used[viewpoint] = used_prompt
         if image_data is None:
             failed_viewpoints.append(viewpoint)
 
@@ -118,7 +121,7 @@ def generate_image():
 
     # Record this iteration in history (model_snapshot filled in later by analyze-discrepancies)
     generation_history.append({
-        'prompt': optimized_prompt,
+        'prompt': prompts_used,
         'images': {vp: img for vp, img in viewpoint_images.items() if img is not None},
         'model_snapshot': None,
     })
@@ -201,7 +204,7 @@ def regenerate_view():
             # Append a new history entry for this targeted regeneration
             prompt_disclaimer = "\n[Note: This prompt was specifically refined to regenerate this view based on visual feedback.]"
             generation_history.append({
-                'prompt': prompt_to_use + prompt_disclaimer,
+                'prompt': [generation_prompt + prompt_disclaimer],
                 'images': {viewpoint: image_data_url},
                 'model_snapshot': None,
             })
