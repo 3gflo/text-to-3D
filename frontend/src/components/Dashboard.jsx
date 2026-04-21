@@ -1063,24 +1063,20 @@ const Dashboard = () => {
             EXIT VR MODE
           </button>
 
-          <a-scene embedded>
-            {/* Notice the path: /my-cool-room/scene.gltf 
-                Because it's in the public folder, we start with a forward slash!
-            */}
-            <a-entity 
-              gltf-model="/room-blank/source/Room_house.gltf" 
-              position="0 0 0" 
-              scale="1 1 1"
-            ></a-entity>
-
+          <a-scene 
+            embedded 
+            xr-mode-ui="XRMode: ar"
+            background="transparent: true" 
+            webxr="optionalFeatures: hit-test, local-floor;"
+          >
             {/* AI Generated Model */}
-            <a-entity gltf-model={modelUrl} position="-3.8 0.6 0" rotation="0 90 0"></a-entity>
-
+            <a-entity gltf-model={modelUrl} position="0 1 -2" rotation="0 0 0"></a-entity>
+            
             {/* Lights */}
             <a-light type="ambient" color="#ffffff" intensity="1.0"></a-light>
             <a-light type="point" position="-3.6 2.5 0" intensity="2" distance="15"></a-light>
             <a-light type="point" position="-4.3 0.5 0" intensity="1.5" distance="15"></a-light>
-            <a-light type="point" position="-4 0.5 1w" intensity="1.5" distance="15"></a-light>
+            <a-light type="point" position="-4 0.5 1" intensity="1.5" distance="15"></a-light>
             <a-light type="point" position="-4 0.5 -1" intensity="1.5" distance="15"></a-light>
           </a-scene>
         </div>
