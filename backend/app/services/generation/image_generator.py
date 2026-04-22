@@ -26,6 +26,7 @@ class ImageServiceRegistry:
             "imagen": Imagen(google_key) if google_key else MockImageGenerator(),
             "nano-banana": NanoBanana(google_key) if google_key else MockImageGenerator(),
             "gpt-image": GPT_image(openai_key) if openai_key else MockImageGenerator(),
+            "flux-2-pro": Flux2Pro() if fal_key else MockImageGenerator(),
         }
 
         # Internal reference-based generator used for side views only (not user-selectable)
@@ -81,9 +82,48 @@ class Imagen(BaseImageGenerator):
             print(f"Imagen error: {e}")
         return []
 
+class Flux2Pro(BaseImageGenerator):
+    """Flux 2 Pro text-to-image generator via fal.ai."""
+
+    def __init__(self) -> None:
+        self.model_endpoint = "fal-ai/flux-2-pro"
+
+    def generate(self, prompt: str, num_images: int = 1) -> list[bytes]:
+        try:
+            result = fal_client.subscribe(
+                self.model_endpoint,
+                arguments={
+                    "prompt": prompt,
+                    "num_images": num_images,
+                    "output_format": "png"
+                }
+            )
+
+            images = []
+            if result and 'images' in result:
+                for img_info in result['images']:
+                    url = img_info.get('url')
+                    if url:
+                        resp = requests.get(url)
+                        resp.raise_for_status()
+                        images.append(resp.content)
+            return images
+
+        except Exception as e:
+            print(f"Flux 2 Pro Error: {e}")
+            return []
+
+    @property
+    def supports_reference(self) -> bool:
+        return True
+
+    def generate_with_reference(self, prompt: str, reference_image: bytes) -> list[bytes]:
+        # Leverage your existing edit model for reference generation!
+        editor = Flux2ProEdit()
+        return editor.generate_with_reference(prompt, reference_image)
+
 
 class Flux2ProEdit(BaseImageGenerator):
-    """Flux 2 Pro Edit (fal.ai) - reference-based image editing model."""
 
     def __init__(self) -> None:
         self.model_endpoint = "fal-ai/flux-2-pro/edit"

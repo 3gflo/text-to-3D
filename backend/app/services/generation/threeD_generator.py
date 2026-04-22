@@ -3,8 +3,10 @@ import os
 import base64
 import fal_client
 import requests
+import tempfile
 from abc import ABC, abstractmethod
 from PIL import Image
+from gradio_client import Client, handle_file
 
 
 class ThreeDServiceRegistry:
@@ -19,6 +21,7 @@ class ThreeDServiceRegistry:
         self._services: dict[str, 'Base3DGenerator'] = {
             "trellis": Trellis() if fal_key else Mock3DGenerator(),
             "trellis-2": Trellis2() if fal_key else Mock3DGenerator(),
+            "trellis-2-fast": Trellis2Gradio(),
             "hunyuan": Hunyuan() if fal_key else Mock3DGenerator(),
             "hunyuan-pro": HunyuanPro() if fal_key else Mock3DGenerator()
         }
@@ -112,6 +115,86 @@ class Trellis2(Base3DGenerator):
         except Exception as e:
             print(f"Trellis2 error: {str(e)[:500]}")
             return None
+        
+class Trellis2Gradio(Base3DGenerator):
+    """Integrates with the external Trellis 2 Gradio application."""
+
+    def __init__(self):
+        self.api_url = "http://vn.ugavel.com:49335/"
+
+    def generate(self, images: list[bytes]) -> bytes | None:
+        if not images:
+            print("Trellis 2 requires an image.")
+            return None
+
+        # Gradio requires a file path, save the byte array to a temp file
+        temp_in_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_in:
+                temp_in.write(images[0])
+                temp_in_path = temp_in.name
+
+            # Initialize the Gradio Client
+            client = Client(self.api_url)
+
+            print("Starting Trellis 2 Session...")
+            client.predict(api_name="/start_session")
+
+            print("Preprocessing Image...")
+            client.predict(
+                image=handle_file(temp_in_path),
+                api_name="/preprocess_image_1"
+            )
+
+            print("Generating 3D Asset (This may take ~16-45 seconds)...")
+            # Passing all default parameters
+            client.predict(
+                image=handle_file(temp_in_path),
+                seed=0,
+                resolution="1024",
+                ss_guidance_strength=7.5,
+                ss_guidance_rescale=0.7,
+                ss_sampling_steps=12,
+                ss_rescale_t=5,
+                shape_slat_guidance_strength=7.5,
+                shape_slat_guidance_rescale=0.5,
+                shape_slat_sampling_steps=12,
+                shape_slat_rescale_t=3,
+                tex_slat_guidance_strength=1,
+                tex_slat_guidance_rescale=0,
+                tex_slat_sampling_steps=12,
+                tex_slat_rescale_t=3,
+                api_name="/image_to_3d"
+            )
+
+            print("Extracting GLB...")
+            glb_result = client.predict(
+                decimation_target=500000,
+                texture_size=2048,
+                api_name="/extract_glb"
+            )
+
+            # The /extract_glb endpoint returns a tuple, where [1] is the download filepath
+            if not glb_result or len(glb_result) < 2:
+                print("Trellis 2 failed to return a GLB tuple.")
+                return None
+
+            download_filepath = glb_result[1]
+
+            # Read the generated GLB back into bytes to return to the frontend
+            with open(download_filepath, "rb") as f:
+                glb_bytes = f.read()
+
+            return glb_bytes
+
+        except Exception as e:
+            print(f"Trellis 2 Gradio API error: {e}")
+            return None
+
+        finally:
+            # Clean up temporary file
+            if temp_in_path and os.path.exists(temp_in_path):
+                os.remove(temp_in_path)
 
 
 class Hunyuan(Base3DGenerator):
@@ -158,7 +241,12 @@ class HunyuanPro(Base3DGenerator):
 
         try:
             print(f"Calling Hunyuan Pro with {len(images)} views...")
-            result = fal_client.subscribe(self.model_endpoint, arguments=arguments)
+            result = fal_client.subscribe(
+                self.model_endpoint,
+                arguments=arguments
+            )
+            
+            # v3.1 Pro returns the URL in a 'model_glb' dict
             model_url = self._extract_url(result, "HunyuanPro")
             return self._download_file(model_url)
         except Exception as e:
@@ -172,32 +260,3 @@ class Mock3DGenerator(Base3DGenerator):
     def generate(self, images: list[bytes]) -> bytes | None:
         print("Mock3DGenerator: returning dummy GLB bytes.")
         return b"glTF" + b"\x00" * 20
-
-
-def split_orthographic_sheet(sheet_bytes: bytes) -> list[bytes]:
-    """
-    Split a 4-view orthographic sheet into individual view images.
-
-    Assumes a 2x2 grid layout: top-left = front, top-right = back,
-    bottom-left = left side, bottom-right = right side.
-    """
-    img = Image.open(io.BytesIO(sheet_bytes))
-    width, height = img.size
-    mid_x = width // 2
-    mid_y = height // 2
-
-    boxes = [
-        (0, 0, mid_x, mid_y),          # Top-Left (Front)
-        (mid_x, 0, width, mid_y),      # Top-Right (Back)
-        (0, mid_y, mid_x, height),     # Bottom-Left
-        (mid_x, mid_y, width, height)  # Bottom-Right
-    ]
-
-    separated_images: list[bytes] = []
-    for box in boxes:
-        cropped_img = img.crop(box)
-        img_byte_arr = io.BytesIO()
-        cropped_img.save(img_byte_arr, format='PNG')
-        separated_images.append(img_byte_arr.getvalue())
-
-    return separated_images

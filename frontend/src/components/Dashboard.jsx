@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './Dashboard.css';
 import '@google/model-viewer';
+import 'aframe';
+import 'aframe-environment-component';
 
 /**
  * CLIP score thresholds for categorizing image-prompt alignment quality.
@@ -48,6 +50,9 @@ const Dashboard = () => {
   const [jobAnalysis, setJobAnalysis] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedDepthIndex, setSelectedDepthIndex] = useState(3);
+  
+  const [showVR, setShowVR] = useState(false); // VR state
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [userName, setUserName] = useState(null);
@@ -279,6 +284,10 @@ const Dashboard = () => {
 
   // Handler for regenerating a single viewpoint image
   const handleRegenerateView = async (viewpoint, feedback) => {
+    if (selectedImageModel === 'imagen') {
+      alert("Imagen does not support view regeneration. Please select another image generator from the model dropdown to use this feature.");
+      return;
+    }
     setRegeneratingView(viewpoint);
     setShowRegenInput(null);
 
@@ -365,11 +374,24 @@ const Dashboard = () => {
    * Send the selected image to the 3D generation service and load the returned GLB
    * into the model viewer. Locks the job controls after a successful generation.
    */
-  const handleGenerate3DAsset = async () => {
-    const allImages = generatedImages.map(img => img.url);
-    if (allImages.length === 0) {
-      alert("Please generate viewpoint images first!");
-      return;
+ const handleGenerate3DAsset = async () => {
+    let imagesToSend = [];
+
+    // Determine which images to send based on the current mode
+    if (isManualMode) {
+      if (!uploadedImage) {
+        alert("Please upload an image first!");
+        return;
+      }
+      imagesToSend = [uploadedImage];
+    } else {
+      if (generatedImages.length === 0) {
+        alert("Please generate viewpoint images first!");
+        return;
+      }
+      // Slice array to only include the selected images
+      const selectedImages = generatedImages.slice(0, selectedDepthIndex + 1);
+      imagesToSend = selectedImages.map(img => img.url);
     }
 
     setIsGenerating3D(true);
@@ -378,10 +400,12 @@ const Dashboard = () => {
     try {
       const response = await fetch('/api/generate-3d-model', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          images: allImages,
-          service: selected3DModel
+          images: imagesToSend,
+          service: selected3DModel, 
         }),
       });
 
@@ -472,39 +496,67 @@ const Dashboard = () => {
    * so the user can start a new generation run with the same prompt.
    */
   const handleSaveJob = async () => {
+    if (!userName) {
+      alert("Please enter a username to save the job.");
+      return;
+    }
+    
     setIsSaving(true);
+
     try {
-      const response = await fetch('/api/save-job', {
+      // Fetch the actual file data from the browser's Blob memory
+      const response = await fetch(modelUrl);
+      const blob = await response.blob();
+
+      // Convert the Blob into a Base64 string
+      const base64Model = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+
+      let selectedImages = [];
+      if (isManualMode) {
+        selectedImages = [{ url: uploadedImage }];
+      } else {
+        selectedImages = generatedImages.slice(0, selectedDepthIndex + 1);
+      }
+
+      // Send the Base64 string to the backend instead of the Blob URL
+      const saveResponse = await fetch('http://127.0.0.1:5055/api/save-job', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user: userName,
-          description: jobDescription,
-          input_prompt: isManualMode ? "N/A (Manual Upload)" : inputPrompt,
-          text_model: isManualMode ? "N/A" : selectedPromptService,
-          optimized_prompt: isManualMode ? "N/A" : optimizedPrompt,
-          image_model: isManualMode ? "Manual Upload" : selectedImageModel,
-          image_1: "pending",
-          image_2: "pending",
-          image_3: "pending",
-          image_4: "pending",
+          description: "",
+          input_prompt: inputPrompt,
+          text_model: selectedPromptService,
+          optimized_prompt: optimizedPrompt,
+          image_model: selectedImageModel,
           three_d_model: selected3DModel,
-          model_link: "pending",
-          analysis: jobAnalysis
+          analysis: discrepancyAnalysis || "None",
+          
+          // Map only selected images. If an index doesn't exist, it falls back to ""
+          image_1: selectedImages[0]?.url || "",
+          image_2: selectedImages[1]?.url || "",
+          image_3: selectedImages[2]?.url || "",
+          image_4: selectedImages[3]?.url || "",
+          
+          model_data: base64Model 
         })
       });
 
-      if (response.ok) {
-        setIsJobLocked(false);
-        setModelUrl(null);
-        setJobAnalysis("");
-        setJobDescription("");
+      if (saveResponse.ok) {
+        alert("Job saved successfully!");
         setShowSaveModal(false);
+        setModelUrl(null); 
+        setIsJobLocked(false);
       } else {
-        alert("Failed to save job to Sheets.");
+        alert("Failed to save job. Check backend logs.");
       }
-    } catch (error) {
-      alert("Error saving job.");
+    } catch (err) {
+      console.error("Error saving job:", err);
+      alert("An error occurred while saving.");
     } finally {
       setIsSaving(false);
     }
@@ -515,7 +567,10 @@ const Dashboard = () => {
    * to Gemini for discrepancy analysis. Populates the analysis modal with results.
    */
   const handleAnalyzeDiscrepancies = async () => {
-    if (!selectedImageBase64 || !modelUrl) {
+    // Explicitly determine which 2D image to send based on the current mode
+    const imageToAnalyze = isManualMode ? uploadedImage : selectedImageBase64;
+
+    if (!imageToAnalyze || !modelUrl) {
       alert("You need both a selected image and a generated 3D model to compare.");
       return;
     }
@@ -534,12 +589,17 @@ const Dashboard = () => {
         reader.readAsDataURL(blob);
       });
 
+      // Provide a safe fallback if analyzing a manual upload without a typed prompt
+      const promptToUse = isManualMode
+        ? ("Manual image upload")
+        : (optimizedPrompt || inputPrompt);
+
       const response = await fetch('/api/analyze-discrepancies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          original_prompt: optimizedPrompt || inputPrompt,
-          input_images: [selectedImageBase64],
+          original_prompt: promptToUse,
+          input_images: [imageToAnalyze],
           model_snapshots: [snapshotBase64]
         }),
       });
@@ -563,7 +623,7 @@ const Dashboard = () => {
   return (
     <div className="dashboard-container">
       <header className="header">
-        <h1>Gulfstream Text to 3D Model Generator</h1>
+        <h1>Text to 3D Model Generator</h1>
         <h2>Dashboard</h2>
       </header>
 
@@ -628,7 +688,7 @@ const Dashboard = () => {
             value={optimizedPrompt}
             onChange={(e) => setOptimizedPrompt(e.target.value)}
             disabled={isGenerating || isJobLocked || isManualMode}
-            style={{ minHeight: '200px' }}
+            style={{ minHeight: '300px' }}
           />
 
           <select
@@ -708,16 +768,23 @@ const Dashboard = () => {
                 <p style={{ textAlign: 'center', width: '100%', color: '#888' }}>Running pipeline... Please wait.</p>
               )}
 
-              {generatedImages.map((img) => (
+              {generatedImages.map((img, index) => (
                 <div key={img.id} style={{ position: 'relative' }}>
                   <div
                     className="image-card"
-                    onClick={() => !isJobLocked && setSelectedImageBase64(img.url)}
+                    onClick={() => {
+                      if (!isJobLocked) {
+                        setSelectedImageBase64(img.url); // Keeps your analysis tool working!
+                        setSelectedDepthIndex(index);    // Adds the 3D depth selection!
+                      }
+                    }}
                     style={{
                       cursor: isJobLocked ? 'not-allowed' : 'pointer',
-                      border: selectedImageBase64 === img.url ? '3px solid #4CAF50' : 'none',
+                      // Applies green border to the clicked image and all images before it
+                      border: index <= selectedDepthIndex ? '3px solid #4CAF50' : '3px solid transparent',
                       boxSizing: 'border-box',
-                      opacity: isJobLocked && selectedImageBase64 !== img.url ? 0.5 : 1
+                      opacity: isJobLocked && index > selectedDepthIndex ? 0.5 : 1,
+                      transition: 'border 0.2s ease-in-out'
                     }}
                   >
                     <div className="image-slot">
@@ -810,7 +877,7 @@ const Dashboard = () => {
           <button
             className="action-btn"
             onClick={handleGenerate3DAsset}
-            disabled={isGenerating3D || isJobLocked || generatedImages.length === 0}
+            disabled={isGenerating3D || isJobLocked || (isManualMode ? !uploadedImage : generatedImages.length === 0)}
           >
             {isGenerating3D ? "Generating..." : "Generate 3D Asset"}
           </button>
@@ -861,7 +928,6 @@ const Dashboard = () => {
             >
               <option value="glb">Download as GLB (Native)</option>
               <option value="obj">Download as OBJ</option>
-              <option value="fbx">Download as FBX</option>
             </select>
             <button
               className="action-btn download-trigger"
@@ -871,6 +937,21 @@ const Dashboard = () => {
               {isDownloading ? "Processing..." : "Download"}
             </button>
           </div>
+
+          <button // VR button
+            className="action-btn"
+            style={{
+              backgroundColor: modelUrl ? '#003767' : '#6c757d',
+              width: '100%',
+              marginTop: '0.5rem',
+              cursor: modelUrl ? 'pointer' : 'not-allowed',
+              opacity: modelUrl ? 1 : 0.5
+            }}
+            onClick={() => setShowVR(true)}
+            disabled={!modelUrl || isGenerating3D}
+          >
+             View Model in VR
+          </button>
 
           <button
             className="action-btn"
@@ -977,6 +1058,43 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── VR VIEWER OVERLAY ── */}
+      {showVR && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          zIndex: 9999, backgroundColor: '#000'
+        }}>
+          {/* Exit Button */}
+          <button
+            onClick={() => setShowVR(false)}
+            style={{
+              position: 'absolute', top: '20px', right: '20px', zIndex: 10000,
+              padding: '10px 20px', backgroundColor: '#ff4444', color: 'white', 
+              border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
+            }}
+          >
+            EXIT VR MODE
+          </button>
+
+          <a-scene 
+            embedded 
+            xr-mode-ui="XRMode: ar"
+            background="transparent: true" 
+            webxr="optionalFeatures: hit-test, local-floor;"
+          >
+            {/* AI Generated Model */}
+            <a-entity gltf-model={modelUrl} position="0 1 -2" rotation="0 0 0"></a-entity>
+            
+            {/* Lights */}
+            <a-light type="ambient" color="#ffffff" intensity="1.0"></a-light>
+            <a-light type="point" position="-3.6 2.5 0" intensity="2" distance="15"></a-light>
+            <a-light type="point" position="-4.3 0.5 0" intensity="1.5" distance="15"></a-light>
+            <a-light type="point" position="-4 0.5 1" intensity="1.5" distance="15"></a-light>
+            <a-light type="point" position="-4 0.5 -1" intensity="1.5" distance="15"></a-light>
+          </a-scene>
         </div>
       )}
     </div>

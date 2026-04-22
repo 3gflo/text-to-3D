@@ -1,6 +1,9 @@
 Flask==3.1.2
+flask-cors
 google-api-python-client==2.188.0
 google-auth==2.47.0
+google-auth-httplib2
+google-auth-oauthlib
 python-dotenv==1.2.1
 google-genai
 huggingface-hub

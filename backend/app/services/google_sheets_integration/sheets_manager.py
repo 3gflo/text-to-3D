@@ -2,14 +2,21 @@ from app.services.google_sheets_integration.sheets_client import GoogleSheetsCli
 
 
 class MockSheetManager:
-    """No-op sheet manager used when Google Sheets credentials are unavailable."""
+    def __init__(self, *args, **kwargs):
+        print("MockSheetManager initialized (Bypassing Google Sheets).")
+        
+    def add_entry(self, data_dict, sheet_name="Sheet1"):
+        print(f"[MOCK] Saving Job to Sheets -> Sheet: {sheet_name}")
+        print(f"[MOCK] Job Data: User={data_dict.get('User')}, Model={data_dict.get('3D Model Generator')}")
+        raise Exception("Mock services are active. Actual upload was bypassed.")
 
-    def __init__(self, *args, **kwargs) -> None:
-        pass
-
-    def update_row(self, data: dict, sheet_name: str) -> None:
-        print(f"MockSheetManager: skipping write to '{sheet_name}'")
-
+    def update_row(self, data, sheet_name):
+        print(f"[MOCK] Skipping row update for {sheet_name}")
+        return True
+        
+    def get_headers(self, sheet_name):
+        print(f"[MOCK] Getting headers for {sheet_name}")
+        return []
 
 class SheetManager:
     """
@@ -83,6 +90,9 @@ class SheetManager:
         last_row_idx = len(all_data)
         last_row_data = all_data[-1]
         headers = all_data[0]
+
+        print(f"DEBUG - Sheets Headers: {headers}")
+        print(f"DEBUG - Python Data Keys: {list(data_dict.keys())}")
 
         new_row = list(last_row_data)
         while len(new_row) < len(headers):
