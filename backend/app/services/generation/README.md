@@ -41,7 +41,7 @@ The `SYSTEM_INSTRUCTION` constant defines a 4-layer prompt engineering framework
 | MATERIAL | PBR surface descriptions (texture, reflectance, imperfections) |
 | AESTHETICS | Artistic style and rendering genre |
 
-The instruction also mandates specific lighting, background, quality markers, and a 4-view orthographic layout — all critical for downstream 3D reconstruction quality.
+The instruction also mandates specific lighting, background, and quality markers optimized for multi-view 3D reconstruction.
 
 ### Services
 
@@ -82,10 +82,12 @@ Generates 2D concept images from a prompt. Always returns raw PNG bytes, regardl
 service = registry.get_service("imagen")
 
 # Returns a list of raw PNG bytes, one per image
-images: list[bytes] = service.generate(prompt, num_images=3)
+images: list[bytes] = service.generate(prompt, num_images=1)
 ```
 
-The `/api/generate-image` route always requests 3 images and encodes each as a base64 data URI before sending to the frontend.
+The `/api/generate-image` route generates four viewpoint images (front, back, left, right). The front view is generated first and used as a visual reference for the remaining three, which are generated in parallel. Each image is encoded as a base64 data URI and returned in a `{ viewpoint: "data:image/png;base64,..." }` dict.
+
+Services that support reference-based generation expose `supports_reference = True` and a `generate_with_reference(prompt, ref_bytes)` method. For services that don't, the route falls back to a Flux 2 Pro Edit reference generator registered separately in the image registry.
 
 ---
 
@@ -95,27 +97,14 @@ Converts one or more 2D images into a `.glb` 3D mesh. All generators use the [fa
 
 ### Services
 
-| Name | Class | Model | Min. Images |
-|------|-------|-------|-------------|
-| `trellis` | `Trellis` | fal-ai/trellis/multi | 1 (auto-split) |
-| `trellis-2` | `Trellis2` | fal-ai/trellis-2 | 1 (auto-split) |
-| `hunyuan` | `Hunyuan` | fal-ai/hunyuan3d/v2/multi-view | 3 |
-| `hunyuan-pro` | `HunyuanPro` | fal-ai/hunyuan-3d/v3.1/pro/image-to-3d | 1 |
-| *(fallback)* | `Mock3DGenerator` | — | Returns a minimal GLB header |
-
-### Orthographic Sheet Splitting
-
-The image generation models produce a single 2×2 orthographic sheet (front, back, left, right). The `split_orthographic_sheet(sheet_bytes)` utility splits this into four individual view images, which are then passed to the 3D generator.
-
-```
-┌────────┬────────┐
-│  Front │  Back  │
-├────────┼────────┤
-│  Left  │  Right │
-└────────┴────────┘
-```
-
-This splitting happens automatically in the `/api/generate-3d-model` route when only one image is provided.
+| Name | Class | Model                                                  |
+|------|-------|--------------------------------------------------------|
+| `trellis` | `Trellis` | fal-ai/trellis/multi                                   |
+| `trellis-2` | `Trellis2` | fal-ai/trellis-2                                       |
+| `trellis-2-fast` | `Trellis2Gradio` | local inference provided by Dr. Johnsen (1 view input) |
+| `hunyuan` | `Hunyuan` | fal-ai/hunyuan3d/v2/multi-view                         |
+| `hunyuan-pro` | `HunyuanPro` | fal-ai/hunyuan-3d/v3.1/pro/image-to-3d                 |
+| *(fallback)* | `Mock3DGenerator` | —                                                      | Returns a minimal GLB header |
 
 ### Interface
 
@@ -125,6 +114,8 @@ service = registry.get_service("trellis")
 # Accepts a list of view images as raw bytes, returns GLB bytes
 model_bytes: bytes | None = service.generate(image_bytes_list)
 ```
+
+The `/api/generate-3d-model` route decodes each base64 image string from the request and passes the resulting byte list directly to the selected service.
 
 ### Base Class Helpers
 

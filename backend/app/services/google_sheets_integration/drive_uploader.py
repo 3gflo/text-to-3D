@@ -10,14 +10,14 @@ from googleapiclient.http import MediaIoBaseUpload
 
 class MockDriveUploader:
     def __init__(self, *args, **kwargs):
-        print("🟡 MockDriveUploader initialized (Bypassing Google Drive).")
+        print("MockDriveUploader initialized (Bypassing Google Drive).")
 
     def upload_base64_image(self, b64_string: str, filename: str) -> str:
-        print(f"🟡 [MOCK] Uploading image: {filename}")
+        print(f"[MOCK] Uploading image: {filename}")
         return "https://mock-drive-link.com/fake-image.png"
 
     def upload_base64_file(self, b64_string: str, filename: str, mime_type: str = 'application/octet-stream') -> str:
-        print(f"🟡 [MOCK] Uploading 3D model: {filename}")
+        print(f"[MOCK] Uploading 3D model: {filename}")
         return "https://mock-drive-link.com/fake-model.glb"
 
 class GoogleDriveUploader:
@@ -60,7 +60,6 @@ class GoogleDriveUploader:
         self.service = build('drive', 'v3', credentials=self.creds)
 
 
-    # FOR IMAGES
     def upload_base64_image(self, b64_string: str, filename: str) -> str:
         try:
             if ',' in b64_string:
@@ -98,7 +97,6 @@ class GoogleDriveUploader:
             return ""
 
 
-    # FOR 3D MODELS
     def upload_base64_file(self, b64_string: str, filename: str, mime_type: str = 'application/octet-stream') -> str:
         """Uploads any base64 encoded file to Google Drive and returns a viewing link."""
         try:
