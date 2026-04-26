@@ -10,7 +10,7 @@ export default defineConfig({
     proxy: {
       // Matches any request starting with /api
       '/api': {
-        target: 'http://127.0.0.1:5055',
+        target: 'http://backend:5055',
         changeOrigin: true,
         secure: false,
       },
