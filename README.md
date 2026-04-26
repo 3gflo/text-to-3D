@@ -145,3 +145,14 @@ Open `http://localhost:5173` in your browser. The Vite dev server proxies all `/
 | `DRIVE_FOLDER_ID` | Google Drive | Target folder for uploaded images and models |
 
 All services degrade gracefully to mocks when their key is missing, so the application remains runnable for development without a full set of credentials.
+
+---
+
+## Docker Setup
+From the root directory, run:
+```bash
+docker-compose up --build
+```
+
+Note that the backend app will take a few minutes to start up the first time, as it is downloading weights from HuggingFace.  
+After the first time, restarting the container should see the app start in the same amount of time as running on localhost.
