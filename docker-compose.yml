@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: text_to_3d_backend
+    ports:
+      - "5055:5055"
+    env_file:
+      - ./backend/.env
+    # Volumes map local code into the container for live-reloading during dev
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: text_to_3d_frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Prevents host node_modules from overriding container modules
+    restart: unless-stopped
